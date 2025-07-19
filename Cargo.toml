@@ -1,17 +1,4 @@
-[package]
-name = "p2prs"
-version = "0.1.0"
-edition = "2024"
-
 [workspace]
 resolver = "3"
 members = [ "client", "common", "server" ]
-
-[[bin]]
-path = "client/src/main.rs"
-name = "client"
-
-[[bin]]
-path = "server/src/main.rs"
-name = "server"
 
