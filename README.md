@@ -20,7 +20,7 @@ files are avaliable and what files it wants.
 1. <a href="#CO-Connect" class="anchor" name="CO-Connect">Connect</a>:
     * Send a list of avaliable files to the server
     * Store other peers
-2. <a href="#CO-UpdateFileListing" class="anchor" name="CO-UpdateFileListing">UpdateFileListing</a>:
+2. <a href="#CO-UpdateFiles" class="anchor" name="CO-UpdateFiles">UpdateFiles</a>:
     * Send the new list of files
 3. <a href="#CO-Disconnect" class="anchor" name="CO-Disconnect">Disconnect</a>:
     * Send the Disconnect action to the server
@@ -51,8 +51,8 @@ files are avaliable and what files it wants.
     * Associate the client's IP with their file list
     * Propagate the client's creation with [RegisterPeer](#SO-RegisterPeer)
     * Tell the new client about old clients
-2. <a href="#SI-UpdateFileListing" class="anchor" name="SI-UpdateFileListing">UpdateFileListing</a>:
-    * Create from [UpdateFileListing](#CO-UpdateFileListing)
+2. <a href="#SI-UpdateFiles" class="anchor" name="SI-UpdateFiles">UpdateFiles</a>:
+    * Create from [UpdateFiles](#CO-UpdateFiles)
     * Update the client's file listing
     * Propagate the client's changes with [UpdatePeer](#SO-UpdatePeer)
 3. <a href="#SI-Disconnect" class="anchor" name="SI-Disconnect">Disconnect</a>:

@@ -1,10 +1,18 @@
+use common::*;
 use std::path::PathBuf;
 
-use common::serial::{IntoBytes, FromRaw};
-use common::*;
-
 fn main() {
-    let x = client::Message::RequestFile(client::RequestFile{file: PathBuf::from("file.txt")});
+    let x = client::Message::Connect(client::Connect {
+        file_list: vec![File {
+            path: PathBuf::from("file.txt"),
+            size: 30,
+        }],
+    });
+    eprint!("{x:?} -> ");
+
     let x_bytes = x.into_bytes();
-    println!("{x_bytes:?}");
+    eprint!("{x_bytes:?} -> ");
+
+    let m = AnyMessage::from_bytes(&x_bytes);
+    eprintln!("{m:?}");
 }

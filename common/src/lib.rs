@@ -1,5 +1,5 @@
 pub mod serial;
-pub use serial::{IntoBytes, FromRaw};
+pub use serial::{FromBytes, IntoBytes};
 
 #[derive(Debug)]
 pub struct File {
@@ -13,6 +13,18 @@ pub enum AnyMessage {
     Server(server::Message),
 }
 
+impl From<client::Message> for AnyMessage {
+    fn from(value: client::Message) -> Self {
+        AnyMessage::Client(value)
+    }
+}
+
+impl From<server::Message> for AnyMessage {
+    fn from(value: server::Message) -> Self {
+        AnyMessage::Server(value)
+    }
+}
+
 /// Messages a client can send
 pub mod client {
     use super::File;
@@ -24,15 +36,33 @@ pub mod client {
         pub file_list: Vec<File>,
     }
 
-    // 2. UpdateFileListing
+    impl From<Connect> for Message {
+        fn from(value: Connect) -> Self {
+            Message::Connect(value)
+        }
+    }
+
+    // 2. UpdateFiles
     #[derive(Debug)]
-    pub struct UpdateFileListing {
+    pub struct UpdateFiles {
         pub file_list: Vec<File>,
+    }
+
+    impl From<UpdateFiles> for Message {
+        fn from(value: UpdateFiles) -> Self {
+            Message::UpdateFiles(value)
+        }
     }
 
     // 3. Disconnect
     #[derive(Debug)]
     pub struct Disconnect;
+
+    impl From<Disconnect> for Message {
+        fn from(value: Disconnect) -> Self {
+            Message::Disconnect(value)
+        }
+    }
 
     // 4. RequestFile
     #[derive(Debug)]
@@ -40,15 +70,22 @@ pub mod client {
         pub file: PathBuf,
     }
 
+    impl From<RequestFile> for Message {
+        fn from(value: RequestFile) -> Self {
+            Message::RequestFile(value)
+        }
+    }
+
     #[derive(Debug)]
     pub enum Message {
         Connect(Connect),
-        UpdateFileListing(UpdateFileListing),
+        UpdateFiles(UpdateFiles),
         Disconnect(Disconnect),
         RequestFile(RequestFile),
     }
 }
 
+// TODO Ipv4Addr -> SocketAddrV4
 /// Messages a server can send
 pub mod server {
     use super::File;
@@ -61,6 +98,12 @@ pub mod server {
         pub file_list: Vec<File>,
     }
 
+    impl From<RegisterPeer> for Message {
+        fn from(value: RegisterPeer) -> Self {
+            Message::RegisterPeer(value)
+        }
+    }
+
     // 2. UpdatePeer
     #[derive(Debug)]
     pub struct UpdatePeer {
@@ -68,10 +111,22 @@ pub mod server {
         pub file_list: Vec<File>,
     }
 
+    impl From<UpdatePeer> for Message {
+        fn from(value: UpdatePeer) -> Self {
+            Message::UpdatePeer(value)
+        }
+    }
+
     // 3. UnregisterPeer
     #[derive(Debug)]
     pub struct UnregisterPeer {
         pub ip: Ipv4Addr,
+    }
+
+    impl From<UnregisterPeer> for Message {
+        fn from(value: UnregisterPeer) -> Self {
+            Message::UnregisterPeer(value)
+        }
     }
 
     #[derive(Debug)]
