@@ -274,6 +274,14 @@ impl FromBytes for AnyMessage {
     }
 }
 
+impl AnyMessage {
+    pub fn from_header_and_content(msg_type: u8, content_size: u64, content: Vec<u8>) -> Result<Self, ()> {
+        let msg_type = msg_type.try_into()?;
+        assert!(content_size as usize == content.len());
+        Ok(AnyMessage::try_from_raw(RawMessage { msg_type, content })?)
+    }
+}
+
 impl FromBytes for RawMessage {
     type Error = ();
     fn from_bytes(bytes: &[u8]) -> Result<RawMessage, Self::Error> {
