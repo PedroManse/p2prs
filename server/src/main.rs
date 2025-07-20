@@ -1,7 +1,7 @@
 use std::io::Read;
 use std::net::{TcpListener, TcpStream};
 
-use common::{client, server, AnyMessage};
+use common::{AnyMessage, client, server};
 
 fn handle(mut stream: TcpStream) {
     println!("{stream:?}");
@@ -23,10 +23,12 @@ fn handle(mut stream: TcpStream) {
     println!("{m:?}");
 }
 
-fn main() -> Result<(), std::io::Error>{
+fn main() -> Result<(), std::io::Error> {
     let listener = TcpListener::bind("127.0.0.1:6969")?;
     for stream in listener.incoming() {
-        handle(stream?);
+        let stream = stream?;
+        std::thread::spawn(move || handle(stream));
+        //handle(stream);
     }
     Ok(())
 }
