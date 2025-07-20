@@ -1,4 +1,5 @@
-use crate::{AnyMessage, client, server};
+use crate::{AnyMessage, File, client, server};
+use std::net::{Ipv4Addr, SocketAddrV4};
 
 trait IntoRaw {
     fn into_raw(&self) -> RawMessage;
@@ -66,28 +67,27 @@ pub struct RawMessage {
     content: Vec<u8>,
 }
 
-const U64_BYTES: u64 = std::mem::size_of::<u64>() as u64;
-const UU64_BYTES: usize = std::mem::size_of::<u64>();
-const U32_BYTES: u64 = std::mem::size_of::<u64>() as u64;
-const UU32_BYTES: usize = std::mem::size_of::<u64>();
+const U64_BYTES: usize = std::mem::size_of::<u64>();
+const U32_BYTES: usize = std::mem::size_of::<u32>();
+const U16_BYTES: usize = std::mem::size_of::<u16>() as usize;
 
 // Client: 1
 impl IntoBytes for client::Connect {
     fn into_bytes(&self) -> Vec<u8> {
         // [ {file_size}:64 {path_len}:64 {path}:path_len ]*
-        let size: u64 = self
+        let size: usize = self
             .file_list
             .iter()
-            .map(|a| a.path.as_os_str().as_encoded_bytes().len() as u64 + U64_BYTES * 2)
+            .map(|a| a.path.as_os_str().as_encoded_bytes().len() + U64_BYTES * 2)
             .sum();
         let mut content = vec![0; size as usize];
         let mut index = 0;
         for file in &self.file_list {
-            (content[index..index + UU64_BYTES]).copy_from_slice(&file.size.to_le_bytes());
-            index += UU64_BYTES;
+            (content[index..index + U64_BYTES]).copy_from_slice(&file.size.to_le_bytes());
+            index += U64_BYTES;
             let path_size = file.path.as_os_str().as_encoded_bytes().len();
-            (content[index..index + UU64_BYTES]).copy_from_slice(&path_size.to_le_bytes());
-            index += UU64_BYTES;
+            (content[index..index + U64_BYTES]).copy_from_slice(&path_size.to_le_bytes());
+            index += U64_BYTES;
             (content[index..index + path_size])
                 .copy_from_slice(file.path.as_os_str().as_encoded_bytes());
         }
@@ -99,19 +99,19 @@ impl IntoBytes for client::Connect {
 impl IntoBytes for client::UpdateFiles {
     fn into_bytes(&self) -> Vec<u8> {
         // [ {file_size}:64 {path_len}:64 {path}:path_len ]*
-        let size: u64 = self
+        let size: usize = self
             .file_list
             .iter()
-            .map(|a| a.path.as_os_str().as_encoded_bytes().len() as u64 + U64_BYTES * 2)
+            .map(|a| a.path.as_os_str().as_encoded_bytes().len() + U64_BYTES * 2)
             .sum();
-        let mut content = vec![0; size as usize];
+        let mut content = vec![0; size];
         let mut index = 0;
         for file in &self.file_list {
-            (content[index..index + UU64_BYTES]).copy_from_slice(&file.size.to_le_bytes());
-            index += UU64_BYTES;
+            (content[index..index + U64_BYTES]).copy_from_slice(&file.size.to_le_bytes());
+            index += U64_BYTES;
             let path_size = file.path.as_os_str().as_encoded_bytes().len();
-            (content[index..index + UU64_BYTES]).copy_from_slice(&path_size.to_le_bytes());
-            index += UU64_BYTES;
+            (content[index..index + U64_BYTES]).copy_from_slice(&path_size.to_le_bytes());
+            index += U64_BYTES;
             (content[index..index + path_size])
                 .copy_from_slice(file.path.as_os_str().as_encoded_bytes());
         }
@@ -131,9 +131,9 @@ impl IntoBytes for client::RequestFile {
     fn into_bytes(&self) -> Vec<u8> {
         let path_bytes = self.file.as_os_str().as_encoded_bytes();
         let path_size = path_bytes.len();
-        let mut content = vec![0; path_size + UU64_BYTES];
-        content[0..UU64_BYTES].copy_from_slice(&path_size.to_le_bytes());
-        content[UU64_BYTES..path_size + UU64_BYTES].copy_from_slice(path_bytes);
+        let mut content = vec![0; path_size + U64_BYTES];
+        content[0..U64_BYTES].copy_from_slice(&path_size.to_le_bytes());
+        content[U64_BYTES..path_size + U64_BYTES].copy_from_slice(path_bytes);
         content
     }
 }
@@ -153,22 +153,23 @@ impl IntoRaw for client::Message {
 
 impl IntoBytes for server::RegisterPeer {
     fn into_bytes(&self) -> Vec<u8> {
-        // {ip}:u32 [ {file_size}:u64 {path_len}:u64 {path}:path_len ]*
-        let files_size: u64 = self
+        // {ip}:u64 [ {file_size}:u64 {path_len}:u64 {path}:path_len ]*
+        let files_size: usize = self
             .file_list
             .iter()
-            .map(|a| a.path.as_os_str().as_encoded_bytes().len() as u64 + U64_BYTES * 2)
+            .map(|a| a.path.as_os_str().as_encoded_bytes().len() + U64_BYTES * 2)
             .sum();
-        // +4 for ip
-        let mut content = vec![0; files_size as usize + 4];
-        let mut index = UU32_BYTES;
-        content[0..UU32_BYTES].copy_from_slice(&self.ip.octets());
+        // +4 for ip + 2 for port
+        let mut content = vec![0; files_size + U32_BYTES + U16_BYTES];
+        let mut index = U32_BYTES + size_of::<u16>();
+        content[0..U32_BYTES].copy_from_slice(&self.sock.ip().octets());
+        content[U32_BYTES..U32_BYTES + 2].copy_from_slice(&self.sock.port().to_le_bytes());
         for file in &self.file_list {
-            (content[index..index + UU64_BYTES]).copy_from_slice(&file.size.to_le_bytes());
-            index += UU64_BYTES;
+            (content[index..index + U64_BYTES]).copy_from_slice(&file.size.to_le_bytes());
+            index += U64_BYTES;
             let path_size = file.path.as_os_str().as_encoded_bytes().len();
-            (content[index..index + UU64_BYTES]).copy_from_slice(&path_size.to_le_bytes());
-            index += UU64_BYTES;
+            (content[index..index + U64_BYTES]).copy_from_slice(&path_size.to_le_bytes());
+            index += U64_BYTES;
             (content[index..index + path_size])
                 .copy_from_slice(file.path.as_os_str().as_encoded_bytes());
         }
@@ -179,21 +180,23 @@ impl IntoBytes for server::RegisterPeer {
 impl IntoBytes for server::UpdatePeer {
     fn into_bytes(&self) -> Vec<u8> {
         // {ip}:u32 [ {file_size}:u64 {path_len}:u64 {path}:path_len ]*
-        let files_size: u64 = self
+        let files_size: usize = self
             .file_list
             .iter()
-            .map(|a| a.path.as_os_str().as_encoded_bytes().len() as u64 + U64_BYTES * 2)
+            .map(|a| a.path.as_os_str().as_encoded_bytes().len() + U64_BYTES * 2)
             .sum();
-        // +4 for ip
-        let mut content = vec![0; files_size as usize + 4];
-        let mut index = UU32_BYTES;
-        content[0..UU32_BYTES].copy_from_slice(&self.ip.octets());
+        // +4 for ip + 2 for port
+        let mut content = vec![0; files_size as usize + U32_BYTES + U16_BYTES];
+        let mut index = U32_BYTES + U16_BYTES;
+        content[0..U32_BYTES].copy_from_slice(&self.sock.ip().octets());
+        content[U32_BYTES..U32_BYTES + U16_BYTES]
+            .copy_from_slice(&self.sock.port().to_le_bytes());
         for file in &self.file_list {
-            (content[index..index + UU64_BYTES]).copy_from_slice(&file.size.to_le_bytes());
-            index += UU64_BYTES;
+            (content[index..index + U64_BYTES]).copy_from_slice(&file.size.to_le_bytes());
+            index += U64_BYTES;
             let path_size = file.path.as_os_str().as_encoded_bytes().len();
-            (content[index..index + UU64_BYTES]).copy_from_slice(&path_size.to_le_bytes());
-            index += UU64_BYTES;
+            (content[index..index + U64_BYTES]).copy_from_slice(&path_size.to_le_bytes());
+            index += U64_BYTES;
             (content[index..index + path_size])
                 .copy_from_slice(file.path.as_os_str().as_encoded_bytes());
         }
@@ -203,7 +206,11 @@ impl IntoBytes for server::UpdatePeer {
 
 impl IntoBytes for server::UnregisterPeer {
     fn into_bytes(&self) -> Vec<u8> {
-        Vec::from(self.ip.octets())
+        let mut content = vec![0u8; 6];
+        content[0..U32_BYTES].copy_from_slice(&self.sock.ip().octets());
+        content[U32_BYTES..U32_BYTES + U16_BYTES]
+            .copy_from_slice(&self.sock.port().to_le_bytes());
+        content
     }
 }
 
@@ -237,8 +244,8 @@ where
         // {type}:u8 {content size}:u64 {content}:content size
         let mut content = vec![0; raw.content.len() + 9];
         content[0] = raw.msg_type as u8;
-        (content[1..UU64_BYTES + 1]).copy_from_slice(&raw.content.len().to_le_bytes());
-        content[UU64_BYTES + 1..].copy_from_slice(&raw.content);
+        (content[1..U64_BYTES + 1]).copy_from_slice(&raw.content.len().to_le_bytes());
+        content[U64_BYTES + 1..].copy_from_slice(&raw.content);
         content
     }
 }
@@ -275,12 +282,12 @@ impl FromBytes for RawMessage {
 
         // {content size}:u64
         let mut content_size = [0u8; 8];
-        content_size.copy_from_slice(&bytes[1..UU64_BYTES + 1]);
+        content_size.copy_from_slice(&bytes[1..U64_BYTES + 1]);
         let content_size = u64::from_le_bytes(content_size);
 
         // {content}:content size
         let mut content = vec![0; content_size as usize];
-        content.copy_from_slice(&bytes[1 + UU64_BYTES..]);
+        content.copy_from_slice(&bytes[1 + U64_BYTES..]);
 
         Ok(RawMessage { msg_type, content })
     }
@@ -324,19 +331,19 @@ impl FromBytes for client::UpdateFiles {
 
         while !bytes.is_empty() {
             // Check if there are enough bytes for file_size and path_size
-            if bytes.len() < 2 * UU64_BYTES {
+            if bytes.len() < 2 * U64_BYTES {
                 panic!("Not enough bytes to read file metadata");
             }
 
             let mut file_size = [0u8; 8];
-            file_size.copy_from_slice(&bytes[0..UU64_BYTES]);
+            file_size.copy_from_slice(&bytes[0..U64_BYTES]);
             let file_size = u64::from_le_bytes(file_size);
 
             let mut path_size = [0u8; 8];
-            path_size.copy_from_slice(&bytes[UU64_BYTES..UU64_BYTES * 2]);
+            path_size.copy_from_slice(&bytes[U64_BYTES..U64_BYTES * 2]);
             let path_size = u64::from_le_bytes(path_size);
 
-            let path_bytes = &bytes[2 * UU64_BYTES..2 * UU64_BYTES + path_size as usize];
+            let path_bytes = &bytes[2 * U64_BYTES..2 * U64_BYTES + path_size as usize];
             let os_str = std::ffi::OsStr::from_bytes(path_bytes);
             let path = std::path::PathBuf::from(os_str);
 
@@ -346,7 +353,7 @@ impl FromBytes for client::UpdateFiles {
             });
 
             // Move to the next file
-            bytes = &bytes[2 * UU64_BYTES + path_size as usize..];
+            bytes = &bytes[2 * U64_BYTES + path_size as usize..];
         }
 
         Ok(client::UpdateFiles { file_list })
@@ -358,15 +365,15 @@ impl FromBytes for client::RequestFile {
 
     fn from_bytes(bytes: &[u8]) -> Result<Self, Self::Error> {
         use std::os::unix::ffi::OsStrExt; // for from_bytes
-        if bytes.len() < UU64_BYTES {
+        if bytes.len() < U64_BYTES {
             panic!("Byte slice too short to contain path size");
         }
 
-        let mut size_bytes = [0u8; UU64_BYTES];
-        size_bytes.copy_from_slice(&bytes[0..UU64_BYTES]);
+        let mut size_bytes = [0u8; U64_BYTES];
+        size_bytes.copy_from_slice(&bytes[0..U64_BYTES]);
         let path_size = u64::from_le_bytes(size_bytes) as usize;
 
-        let path_bytes = &bytes[UU64_BYTES..UU64_BYTES + path_size];
+        let path_bytes = &bytes[U64_BYTES..U64_BYTES + path_size];
         let os_str = std::ffi::OsStr::from_bytes(path_bytes);
         let path = std::path::PathBuf::from(os_str);
 
@@ -376,21 +383,94 @@ impl FromBytes for client::RequestFile {
 
 impl FromBytes for server::RegisterPeer {
     type Error = ();
-    fn from_bytes(bytes: &[u8]) -> Result<Self, Self::Error> {
-        todo!()
+    fn from_bytes(mut bytes: &[u8]) -> Result<Self, Self::Error> {
+        use std::os::unix::ffi::OsStrExt; // for from_bytes
+        let mut ip = [0u8; 4];
+        ip.copy_from_slice(&bytes[0..4]);
+        let ip = Ipv4Addr::from_bits(u32::from_le_bytes(ip));
+        let mut port = [0u8; 2];
+        port.copy_from_slice(&bytes[4..6]);
+        let port = u16::from_le_bytes(port);
+        let sock = SocketAddrV4::new(ip, port);
+
+        let mut file_list = vec![];
+
+        bytes = &bytes[6..];
+        while !bytes.is_empty() {
+            let mut file_size = [0u8; U64_BYTES];
+            file_size.copy_from_slice(&bytes[0..U64_BYTES]);
+            let file_size = u64::from_le_bytes(file_size) as usize;
+
+            let mut path_size = [0u8; U64_BYTES];
+            path_size.copy_from_slice(&bytes[U64_BYTES..U64_BYTES * 2]);
+            let path_size = u64::from_le_bytes(path_size) as usize;
+
+            let os_str =
+                std::ffi::OsStr::from_bytes(&bytes[U64_BYTES * 2..U64_BYTES * 2 + path_size]);
+            let path = std::path::PathBuf::from(os_str);
+
+            file_list.push(File {
+                path,
+                size: file_size as u64,
+            });
+            bytes = &bytes[U64_BYTES * 2 + path_size..];
+        }
+
+        Ok(server::RegisterPeer { file_list, sock })
     }
 }
 
 impl FromBytes for server::UpdatePeer {
     type Error = ();
-    fn from_bytes(bytes: &[u8]) -> Result<Self, Self::Error> {
-        todo!()
+    fn from_bytes(mut bytes: &[u8]) -> Result<Self, Self::Error> {
+        use std::os::unix::ffi::OsStrExt; // for from_bytes
+        let mut ip = [0u8; 4];
+        ip.copy_from_slice(&bytes[0..4]);
+        let ip = Ipv4Addr::from_bits(u32::from_le_bytes(ip));
+        let mut port = [0u8; 2];
+        port.copy_from_slice(&bytes[4..6]);
+        let port = u16::from_le_bytes(port);
+        let sock = SocketAddrV4::new(ip, port);
+
+        let mut file_list = vec![];
+
+        bytes = &bytes[6..];
+        while !bytes.is_empty() {
+            let mut file_size = [0u8; U64_BYTES];
+            file_size.copy_from_slice(&bytes[0..U64_BYTES]);
+            let file_size = u64::from_le_bytes(file_size) as usize;
+
+            let mut path_size = [0u8; U64_BYTES];
+            path_size.copy_from_slice(&bytes[U64_BYTES..U64_BYTES * 2]);
+            let path_size = u64::from_le_bytes(path_size) as usize;
+
+            let os_str =
+                std::ffi::OsStr::from_bytes(&bytes[U64_BYTES * 2..U64_BYTES * 2 + path_size]);
+            let path = std::path::PathBuf::from(os_str);
+
+            file_list.push(File {
+                path,
+                size: file_size as u64,
+            });
+            bytes = &bytes[U64_BYTES * 2 + path_size..];
+        }
+
+        Ok(server::UpdatePeer { file_list, sock })
     }
 }
 
 impl FromBytes for server::UnregisterPeer {
     type Error = ();
     fn from_bytes(bytes: &[u8]) -> Result<Self, Self::Error> {
-        todo!()
+        let mut ip = [0u8; 4];
+        ip.copy_from_slice(&bytes[0..4]);
+        let ip = Ipv4Addr::from_bits(u32::from_le_bytes(ip));
+        let mut port = [0u8; 2];
+        port.copy_from_slice(&bytes[4..6]);
+        let port = u16::from_le_bytes(port);
+        let sock = SocketAddrV4::new(ip, port);
+        Ok(server::UnregisterPeer{
+            sock
+        })
     }
 }

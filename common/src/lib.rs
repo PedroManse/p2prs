@@ -85,16 +85,15 @@ pub mod client {
     }
 }
 
-// TODO Ipv4Addr -> SocketAddrV4
 /// Messages a server can send
 pub mod server {
     use super::File;
-    use std::net::Ipv4Addr;
+    use std::net::SocketAddrV4;
 
     // 1. RegisterPeer
     #[derive(Debug)]
     pub struct RegisterPeer {
-        pub ip: Ipv4Addr,
+        pub sock: SocketAddrV4,
         pub file_list: Vec<File>,
     }
 
@@ -107,7 +106,7 @@ pub mod server {
     // 2. UpdatePeer
     #[derive(Debug)]
     pub struct UpdatePeer {
-        pub ip: Ipv4Addr,
+        pub sock: SocketAddrV4,
         pub file_list: Vec<File>,
     }
 
@@ -120,7 +119,7 @@ pub mod server {
     // 3. UnregisterPeer
     #[derive(Debug)]
     pub struct UnregisterPeer {
-        pub ip: Ipv4Addr,
+        pub sock: SocketAddrV4,
     }
 
     impl From<UnregisterPeer> for Message {
