@@ -1,7 +1,7 @@
 pub mod serial;
 pub use serial::{FromBytes, IntoBytes};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct File {
     pub path: std::path::PathBuf,
     pub size: u64,
