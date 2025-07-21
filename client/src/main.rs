@@ -1,10 +1,9 @@
 use common::*;
 use std::collections::HashMap;
 use std::io::{Read, Write};
-use std::net::SocketAddrV4;
+use std::net::{SocketAddrV4, TcpStream};
 use std::path::PathBuf;
 use std::sync::Arc;
-mod prompt;
 
 fn read_msg(stream: &mut std::net::TcpStream) -> AnyMessage {
     let mut buf = vec![0; 9];
@@ -24,15 +23,10 @@ fn read_msg(stream: &mut std::net::TcpStream) -> AnyMessage {
     AnyMessage::from_header_and_content(msg_type, content_size, buf).unwrap()
 }
 
-
 #[derive(Debug)]
 struct Peer {
     sock: SocketAddrV4,
     files: Vec<File>,
-}
-
-struct Server {
-    sock: SocketAddrV4,
 }
 
 #[derive(Default)]
@@ -71,18 +65,25 @@ impl Peers {
 
 struct Context {
     peers: Peers,
-    servers: Vec<Server>,
+    server: TcpStream,
+    files: Vec<File>,
 }
 
 impl From<server::RegisterPeer> for Peer {
-    fn from(server::RegisterPeer{sock, file_list}: server::RegisterPeer) -> Self {
-        Peer { sock, files: file_list }
+    fn from(server::RegisterPeer { sock, file_list }: server::RegisterPeer) -> Self {
+        Peer {
+            sock,
+            files: file_list,
+        }
     }
 }
 
 impl From<server::UpdatePeer> for Peer {
-    fn from(server::UpdatePeer{sock, file_list}: server::UpdatePeer) -> Self {
-        Peer { sock, files: file_list }
+    fn from(server::UpdatePeer { sock, file_list }: server::UpdatePeer) -> Self {
+        Peer {
+            sock,
+            files: file_list,
+        }
     }
 }
 
@@ -93,7 +94,7 @@ impl Context {
                 self.peers.add_peer(p.into()).unwrap();
             }
             AnyMessage::Server(server::Message::UpdatePeer(p)) => {
-                self.peers.add_peer(p.into()).unwrap();
+                self.peers.update_peer(p.into()).unwrap();
             }
             AnyMessage::Server(server::Message::UnregisterPeer(p)) => {
                 self.peers.remove_peer(p.sock).unwrap();
@@ -104,25 +105,37 @@ impl Context {
             m => panic!("can't handle msg {m:?}"),
         }
     }
-    fn new() -> Self {
-        Self { peers: Peers::new(), servers: Vec::new() }
+
+    fn new(srv: TcpStream) -> Self {
+        let mut slf = Self {
+            peers: Peers::new(),
+            server: srv,
+            files: vec![File {
+                path: PathBuf::from("file.txt"),
+                size: 30,
+            }],
+        };
+        let connect_msg = client::Message::Connect(client::Connect {
+            serve_port: 42069,
+            file_list: slf.files.clone(),
+        });
+        write_msg(&mut slf.server, connect_msg).unwrap();
+        slf
     }
+
+    fn main_loop(&mut self) {
+        loop {
+            let m = read_msg(&mut self.server);
+            println!("{m:?}");
+            self.handle_message(m);
+        }
+    }
+
 }
 
 fn main() -> Result<(), std::io::Error> {
-    let mut ctx = Context::new();
-    let mut s = std::net::TcpStream::connect("127.0.0.1:6969").unwrap();
-
-    let x = client::Message::Connect(client::Connect {
-        file_list: vec![File {
-            path: PathBuf::from("file.txt"),
-            size: 30,
-        }],
-    });
-
-    s.write(&x.into_bytes()).unwrap();
-    loop {
-        let m = read_msg(&mut s);
-        println!("{m:?}");
-    }
+    let s = std::net::TcpStream::connect("127.0.0.1:6969").unwrap();
+    let mut ctx = Context::new(s);
+    ctx.main_loop();
+    Ok(())
 }

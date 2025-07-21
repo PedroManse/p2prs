@@ -1,5 +1,8 @@
 pub mod serial;
 pub use serial::{FromBytes, IntoBytes};
+use std::io::{Read, Write};
+use std::net::TcpStream;
+use std::sync::{Arc, Mutex};
 
 #[derive(Debug, Clone)]
 pub struct File {
@@ -34,6 +37,7 @@ pub mod client {
     #[derive(Debug)]
     pub struct Connect {
         pub file_list: Vec<File>,
+        pub serve_port: u16,
     }
 
     impl From<Connect> for Message {
@@ -134,4 +138,30 @@ pub mod server {
         UpdatePeer(UpdatePeer),
         UnregisterPeer(UnregisterPeer),
     }
+}
+
+pub fn read_msg(stream: &mut TcpStream) -> AnyMessage {
+    let mut buf = vec![0; 9];
+    stream.read(&mut buf).unwrap();
+
+    // {type}:u8
+    let msg_type = buf[0].try_into().unwrap();
+
+    // {content size}:u64
+    let mut content_size = [0u8; 8];
+    content_size.copy_from_slice(&buf[1..8 + 1]);
+    let content_size = u64::from_le_bytes(content_size);
+
+    let mut buf = vec![0; content_size as usize];
+    stream.read(&mut buf).unwrap();
+
+    AnyMessage::from_header_and_content(msg_type, content_size, buf).unwrap()
+}
+
+pub fn write_msg(
+    stream: &mut TcpStream,
+    msg: impl Into<AnyMessage>,
+) -> Result<usize, std::io::Error> {
+    let msg: AnyMessage = msg.into();
+    stream.write(&msg.into_bytes())
 }

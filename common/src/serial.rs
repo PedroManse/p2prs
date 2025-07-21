@@ -74,14 +74,15 @@ const U16_BYTES: usize = std::mem::size_of::<u16>() as usize;
 // Client: 1
 impl IntoBytes for client::Connect {
     fn into_bytes(&self) -> Vec<u8> {
-        // [ {file_size}:64 {path_len}:64 {path}:path_len ]*
+        // {serve_port}:u16 [ {file_size}:64 {path_len}:64 {path}:path_len ]*
         let size: usize = self
             .file_list
             .iter()
             .map(|a| a.path.as_os_str().as_encoded_bytes().len() + U64_BYTES * 2)
             .sum();
-        let mut content = vec![0; size as usize];
-        let mut index = 0;
+        let mut content = vec![0; U16_BYTES + size as usize];
+        (content[0..U16_BYTES]).copy_from_slice(&self.serve_port.to_le_bytes());
+        let mut index = U16_BYTES;
         for file in &self.file_list {
             (content[index..index + U64_BYTES]).copy_from_slice(&file.size.to_le_bytes());
             index += U64_BYTES;
@@ -153,7 +154,7 @@ impl IntoRaw for client::Message {
 
 impl IntoBytes for server::RegisterPeer {
     fn into_bytes(&self) -> Vec<u8> {
-        // {ip}:u64 [ {file_size}:u64 {path_len}:u64 {path}:path_len ]*
+        // {ip}:u64 {serve_port}:u16 [ {file_size}:u64 {path_len}:u64 {path}:path_len ]*
         let files_size: usize = self
             .file_list
             .iter()
@@ -162,8 +163,10 @@ impl IntoBytes for server::RegisterPeer {
         // +4 for ip + 2 for port
         let mut content = vec![0; files_size + U32_BYTES + U16_BYTES];
         let mut index = U32_BYTES + size_of::<u16>();
-        content[0..U32_BYTES].copy_from_slice(&self.sock.ip().octets());
-        content[U32_BYTES..U32_BYTES + 2].copy_from_slice(&self.sock.port().to_le_bytes());
+        let octets = self.sock.ip().octets();
+        let le_octets: [u8; 4] = [octets[3], octets[2], octets[1], octets[0]];
+        content[0..U32_BYTES].copy_from_slice(&le_octets);
+        content[U32_BYTES..U32_BYTES + U16_BYTES].copy_from_slice(&self.sock.port().to_le_bytes());
         for file in &self.file_list {
             (content[index..index + U64_BYTES]).copy_from_slice(&file.size.to_le_bytes());
             index += U64_BYTES;
@@ -189,8 +192,7 @@ impl IntoBytes for server::UpdatePeer {
         let mut content = vec![0; files_size as usize + U32_BYTES + U16_BYTES];
         let mut index = U32_BYTES + U16_BYTES;
         content[0..U32_BYTES].copy_from_slice(&self.sock.ip().octets());
-        content[U32_BYTES..U32_BYTES + U16_BYTES]
-            .copy_from_slice(&self.sock.port().to_le_bytes());
+        content[U32_BYTES..U32_BYTES + U16_BYTES].copy_from_slice(&self.sock.port().to_le_bytes());
         for file in &self.file_list {
             (content[index..index + U64_BYTES]).copy_from_slice(&file.size.to_le_bytes());
             index += U64_BYTES;
@@ -208,8 +210,7 @@ impl IntoBytes for server::UnregisterPeer {
     fn into_bytes(&self) -> Vec<u8> {
         let mut content = vec![0u8; 6];
         content[0..U32_BYTES].copy_from_slice(&self.sock.ip().octets());
-        content[U32_BYTES..U32_BYTES + U16_BYTES]
-            .copy_from_slice(&self.sock.port().to_le_bytes());
+        content[U32_BYTES..U32_BYTES + U16_BYTES].copy_from_slice(&self.sock.port().to_le_bytes());
         content
     }
 }
@@ -275,7 +276,11 @@ impl FromBytes for AnyMessage {
 }
 
 impl AnyMessage {
-    pub fn from_header_and_content(msg_type: u8, content_size: u64, content: Vec<u8>) -> Result<Self, ()> {
+    pub fn from_header_and_content(
+        msg_type: u8,
+        content_size: u64,
+        content: Vec<u8>,
+    ) -> Result<Self, ()> {
         let msg_type = msg_type.try_into()?;
         assert!(content_size as usize == content.len());
         Ok(AnyMessage::try_from_raw(RawMessage { msg_type, content })?)
@@ -322,10 +327,45 @@ impl FromRaw for AnyMessage {
 
 impl FromBytes for client::Connect {
     type Error = ();
-    fn from_bytes(bytes: &[u8]) -> Result<Self, Self::Error> {
-        let x = client::UpdateFiles::from_bytes(bytes)?;
+    // {serve_port}:u16 [ {file_size}:64 {path_len}:64 {path}:path_len ]*
+    fn from_bytes(mut bytes: &[u8]) -> Result<Self, Self::Error> {
+        use std::os::unix::ffi::OsStrExt; // for from_bytes
+        let mut file_list = Vec::new();
+        let mut serve_port = [0u8; 2];
+        serve_port.copy_from_slice(&bytes[0..U16_BYTES]);
+        let serve_port = u16::from_le_bytes(serve_port);
+        bytes = &bytes[U16_BYTES..];
+
+        while !bytes.is_empty() {
+            // Check if there are enough bytes for file_size and path_size
+            if bytes.len() < 2 * U64_BYTES {
+                panic!("Not enough bytes to read file metadata");
+            }
+
+            let mut file_size = [0u8; 8];
+            file_size.copy_from_slice(&bytes[0..U64_BYTES]);
+            let file_size = u64::from_le_bytes(file_size);
+
+            let mut path_size = [0u8; 8];
+            path_size.copy_from_slice(&bytes[U64_BYTES..U64_BYTES * 2]);
+            let path_size = u64::from_le_bytes(path_size);
+
+            let path_bytes = &bytes[2 * U64_BYTES..2 * U64_BYTES + path_size as usize];
+            let os_str = std::ffi::OsStr::from_bytes(path_bytes);
+            let path = std::path::PathBuf::from(os_str);
+
+            file_list.push(crate::File {
+                path,
+                size: file_size,
+            });
+
+            // Move to the next file
+            bytes = &bytes[2 * U64_BYTES + path_size as usize..];
+        }
+
         Ok(client::Connect {
-            file_list: x.file_list,
+            file_list,
+            serve_port,
         })
     }
 }
@@ -392,6 +432,7 @@ impl FromBytes for client::RequestFile {
 impl FromBytes for server::RegisterPeer {
     type Error = ();
     fn from_bytes(mut bytes: &[u8]) -> Result<Self, Self::Error> {
+        // {ip}:u64 {serve_port}:u16 [ {file_size}:u64 {path_len}:u64 {path}:path_len ]*
         use std::os::unix::ffi::OsStrExt; // for from_bytes
         let mut ip = [0u8; 4];
         ip.copy_from_slice(&bytes[0..4]);
@@ -477,8 +518,6 @@ impl FromBytes for server::UnregisterPeer {
         port.copy_from_slice(&bytes[4..6]);
         let port = u16::from_le_bytes(port);
         let sock = SocketAddrV4::new(ip, port);
-        Ok(server::UnregisterPeer{
-            sock
-        })
+        Ok(server::UnregisterPeer { sock })
     }
 }
