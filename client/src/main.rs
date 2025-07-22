@@ -1,29 +1,10 @@
 use common::*;
 use std::collections::HashMap;
-use std::io::{Read, Write};
-use std::net::{SocketAddrV4, TcpStream};
-use std::path::PathBuf;
+use std::net::{SocketAddrV4, TcpListener, TcpStream};
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-fn read_msg(stream: &mut std::net::TcpStream) -> AnyMessage {
-    let mut buf = vec![0; 9];
-    stream.read(&mut buf).unwrap();
-
-    // {type}:u8
-    let msg_type = buf[0].try_into().unwrap();
-
-    // {content size}:u64
-    let mut content_size = [0u8; 8];
-    content_size.copy_from_slice(&buf[1..8 + 1]);
-    let content_size = u64::from_le_bytes(content_size);
-
-    let mut buf = vec![0; content_size as usize];
-    stream.read(&mut buf).unwrap();
-
-    AnyMessage::from_header_and_content(msg_type, content_size, buf).unwrap()
-}
-
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Peer {
     sock: SocketAddrV4,
     files: Vec<File>,
@@ -31,42 +12,30 @@ struct Peer {
 
 #[derive(Default)]
 struct Peers {
-    full: HashMap<SocketAddrV4, Arc<Peer>>,
+    full: HashMap<SocketAddrV4, Peer>,
 }
 
 impl Peers {
     fn new() -> Self {
         Self::default()
     }
-    fn add_peer(&mut self, peer: Peer) -> Result<(), Arc<Peer>> {
-        use std::collections::hash_map::Entry;
-        let peer_rc = Arc::new(peer);
-        match self.full.entry(peer_rc.sock.clone()) {
-            Entry::Vacant(a) => a.insert(Arc::clone(&peer_rc)),
-            Entry::Occupied(o) => Err(Arc::clone(o.get()))?,
-        };
-        Ok(())
-    }
-    fn update_peer(&mut self, peer: Peer) -> Result<(), ()> {
+    fn add_peer(&mut self, peer: Peer) -> Result<(), Peer> {
         use std::collections::hash_map::Entry;
         match self.full.entry(peer.sock.clone()) {
-            Entry::Occupied(mut o) => o.insert(Arc::new(peer)),
-            Entry::Vacant(..) => Err(())?,
+            Entry::Vacant(a) => a.insert(peer),
+            Entry::Occupied(o) => Err(o.get().clone())?,
         };
         Ok(())
     }
-    fn remove_peer(&mut self, sock: SocketAddrV4) -> Option<Arc<Peer>> {
+    fn update_peer(&mut self, new_peer: Peer) {
+        self.full.insert(new_peer.sock.clone(), new_peer);
+    }
+    fn remove_peer(&mut self, sock: SocketAddrV4) -> Option<Peer> {
         self.full.remove(&sock)
     }
     fn get_peer(&mut self, sock: SocketAddrV4) -> Option<&Peer> {
-        self.full.get(&sock).map(|v| v.as_ref())
+        self.full.get(&sock)
     }
-}
-
-struct Context {
-    peers: Peers,
-    server: TcpStream,
-    files: Vec<File>,
 }
 
 impl From<server::RegisterPeer> for Peer {
@@ -87,14 +56,20 @@ impl From<server::UpdatePeer> for Peer {
     }
 }
 
-impl Context {
+struct TrackerServerContext {
+    peers: Peers,
+    server: TcpStream,
+    files: Vec<File>,
+}
+
+impl TrackerServerContext {
     fn handle_message(&mut self, msg: AnyMessage) {
         match msg {
             AnyMessage::Server(server::Message::RegisterPeer(p)) => {
                 self.peers.add_peer(p.into()).unwrap();
             }
             AnyMessage::Server(server::Message::UpdatePeer(p)) => {
-                self.peers.update_peer(p.into()).unwrap();
+                self.peers.update_peer(p.into());
             }
             AnyMessage::Server(server::Message::UnregisterPeer(p)) => {
                 self.peers.remove_peer(p.sock).unwrap();
@@ -106,36 +81,97 @@ impl Context {
         }
     }
 
-    fn new(srv: TcpStream) -> Self {
+    fn new(srv: TcpStream, fsrv: &FileServer) -> Result<Self, std::io::Error> {
+        srv.set_nonblocking(true)?;
         let mut slf = Self {
             peers: Peers::new(),
             server: srv,
-            files: vec![File {
-                path: PathBuf::from("file.txt"),
-                size: 30,
-            }],
+            files: fsrv.files.clone(),
         };
         let connect_msg = client::Message::Connect(client::Connect {
-            serve_port: 42069,
+            serve_port: fsrv.server.local_addr()?.port(),
             file_list: slf.files.clone(),
         });
         write_msg(&mut slf.server, connect_msg).unwrap();
-        slf
+        Ok(slf)
     }
 
-    fn main_loop(&mut self) {
-        loop {
-            let m = read_msg(&mut self.server);
-            println!("{m:?}");
+    fn check_server_messages(&mut self) -> Result<(), std::io::Error> {
+        if let Some(m) = read_msg_nb(&mut self.server)? {
             self.handle_message(m);
         }
+        Ok(())
     }
+}
 
+struct FileServer {
+    server: TcpListener,
+    files: Vec<File>,
+}
+
+impl FileServer {
+    fn new(addr: SocketAddrV4) -> Result<Self, std::io::Error> {
+        let server = TcpListener::bind(addr)?;
+        server.set_nonblocking(true)?;
+        Ok(FileServer {
+            server,
+            files: vec![],
+        })
+    }
+    fn add_file(&mut self, file: File) {
+        self.files.push(file);
+    }
+    fn check_serve(&self) -> Result<Option<(TcpStream, PathBuf)>, std::io::Error> {
+        match self.server.accept() {
+            Ok((mut stream, _)) => {
+                let m = read_msg(&mut stream);
+                if let AnyMessage::Client(client::Message::RequestFile(f)) = m {
+                    Ok(Some((stream, f.file)))
+                } else {
+                    eprintln!("{m:?}");
+                    Ok(None)
+                }
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+    fn send_file(&self, stream: &mut TcpStream, path: &Path) {
+        todo!("send {path:?} to {stream:?}")
+    }
 }
 
 fn main() -> Result<(), std::io::Error> {
-    let s = std::net::TcpStream::connect("127.0.0.1:6969").unwrap();
-    let mut ctx = Context::new(s);
-    ctx.main_loop();
+    use std::io::Write;
+    let mut s = std::net::TcpStream::connect("127.0.0.1:42069").unwrap();
+    let req_msg = client::Message::RequestFile(client::RequestFile {
+        file: PathBuf::from(""),
+    });
+    s.write(&req_msg.into_bytes()).unwrap();
     Ok(())
+}
+
+fn _main() -> Result<(), std::io::Error> {
+    let s = std::net::TcpStream::connect("127.0.0.1:6969").unwrap();
+    let fl_srv_addr: SocketAddrV4 = "127.0.0.1:42069".parse().unwrap();
+    let mut file_ctx = FileServer::new(fl_srv_addr)?;
+    file_ctx.add_file(File {
+        path: PathBuf::from("uwu.txt"),
+        size: 30,
+    });
+    let file_ctx = Arc::new(file_ctx);
+    let mut track_ctx = TrackerServerContext::new(s, &file_ctx)?;
+
+    std::thread::scope(|s| {
+        println!(">>>>>>");
+        loop {
+            track_ctx.check_server_messages()?;
+            if let Some((mut stream, path)) = file_ctx.check_serve()? {
+                let fl = Arc::clone(&file_ctx);
+                s.spawn(move || {
+                    fl.send_file(&mut stream, &path);
+                });
+            }
+        }
+    })
 }
