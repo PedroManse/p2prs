@@ -1,4 +1,6 @@
+use common::serialize::SerializeMessage;
 use common::*;
+use std::io::{BufWriter, Write};
 use std::net::SocketAddrV4;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -9,7 +11,7 @@ use file_server::{FSRequest, FileServer};
 mod tracker;
 use tracker::TrackerServerContext;
 
-fn main() -> Result<(), std::io::Error> {
+fn main() -> Result<(), ClientError> {
     if std::env::args().nth(1) == Some("get".to_string()) {
         get_file_main()
     } else {
@@ -17,7 +19,17 @@ fn main() -> Result<(), std::io::Error> {
     }
 }
 
-fn get_file_main() -> Result<(), std::io::Error> {
+#[derive(Debug, thiserror::Error)]
+pub enum ClientError {
+    #[error(transparent)]
+    IO(#[from] std::io::Error),
+    #[error(transparent)]
+    Lib(#[from] CommonError),
+    #[error(transparent)]
+    AddrParseError(#[from] std::net::AddrParseError),
+}
+
+fn get_file_main() -> Result<(), ClientError> {
     use std::io::Read;
     let file_server_addr: SocketAddrV4 = "127.0.0.1:6969".parse().unwrap();
 
@@ -32,9 +44,9 @@ fn get_file_main() -> Result<(), std::io::Error> {
     Ok(())
 }
 
-fn serve_file_main() -> Result<(), std::io::Error> {
-    let tracker_addr = "127.0.0.1:42069".parse().unwrap();
-    let file_server_addr = "127.0.0.1:6969".parse().unwrap();
+fn serve_file_main() -> Result<(), ClientError> {
+    let tracker_addr = "127.0.0.1:42069".parse()?;
+    let file_server_addr = "127.0.0.1:6969".parse()?;
 
     let file_ctx = Arc::new(FileServer::<file_server::SimpleFileSystem>::new(
         file_server_addr,

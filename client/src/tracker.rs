@@ -1,3 +1,5 @@
+use crate::ClientError;
+
 use super::file_server::{FileServer, FileSystem};
 use common::*;
 use std::collections::HashMap;
@@ -76,7 +78,7 @@ impl<FS: FileSystem> TrackerServerContext<FS> {
         }
     }
 
-    pub fn new(srv: SocketAddrV4, fsrv: &Arc<FileServer<FS>>) -> Result<Self, std::io::Error> {
+    pub fn new(srv: SocketAddrV4, fsrv: &Arc<FileServer<FS>>) -> Result<Self, ClientError> {
         let track_server = std::net::TcpStream::connect(srv).unwrap();
         track_server.set_nonblocking(true)?;
 
@@ -94,7 +96,7 @@ impl<FS: FileSystem> TrackerServerContext<FS> {
         Ok(slf)
     }
 
-    pub fn check_server_messages(&mut self) -> Result<(), std::io::Error> {
+    pub fn check_server_messages(&mut self) -> Result<(), ClientError> {
         if let Some(m) = read_msg_nb(&mut self.server)? {
             self.handle_message(m);
         }

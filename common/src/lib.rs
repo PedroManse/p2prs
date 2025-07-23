@@ -1,4 +1,5 @@
 pub mod serial;
+pub mod serialize;
 pub use serial::{FromBytes, IntoBytes};
 use std::io::{Read, Write};
 use std::net::TcpStream;
@@ -159,15 +160,15 @@ pub fn read_msg(stream: &mut TcpStream) -> AnyMessage {
     AnyMessage::from_header_and_content(msg_type, content_size, buf).unwrap()
 }
 
-pub fn read_msg_nb(stream: &mut TcpStream) -> Result<Option<AnyMessage>, std::io::Error> {
+pub fn read_msg_nb(stream: &mut TcpStream) -> Result<Option<AnyMessage>, CommonError> {
     match read_msg_nb_i(stream) {
         Ok(m) => Ok(Some(m)),
-        Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => Ok(None),
+        Err(CommonError::IO(e)) if e.kind() == std::io::ErrorKind::WouldBlock => Ok(None),
         Err(e) => Err(e),
     }
 }
 
-fn read_msg_nb_i(stream: &mut TcpStream) -> Result<AnyMessage, std::io::Error> {
+fn read_msg_nb_i(stream: &mut TcpStream) -> Result<AnyMessage, CommonError> {
     let mut buf = vec![0; 9];
     stream.read(&mut buf)?;
 
@@ -189,7 +190,21 @@ fn read_msg_nb_i(stream: &mut TcpStream) -> Result<AnyMessage, std::io::Error> {
 pub fn write_msg(
     stream: &mut TcpStream,
     msg: impl Into<AnyMessage>,
-) -> Result<usize, std::io::Error> {
+) -> Result<usize, CommonError> {
     let msg: AnyMessage = msg.into();
-    stream.write(&msg.into_bytes())
+    stream.write(&msg.into_bytes())?;
+    Ok(0)
+}
+
+pub fn write_msg2<M: serialize::SerializeMessage>(stream: &mut TcpStream, msg: &M) -> Result<(), CommonError> {
+    stream.write_all(&[M::MSG_TYPE as u8])?;
+    stream.write_all(&u64::to_le_bytes(msg.size() as u64))?;
+    msg.write(stream)?;
+    Ok(())
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum CommonError {
+    #[error(transparent)]
+    IO(#[from] std::io::Error),
 }

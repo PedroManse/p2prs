@@ -51,7 +51,7 @@ impl Context {
             });
             match write_msg(&mut peer.conn.lock().unwrap(), msg) {
                 Ok(..) => true,
-                Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => false,
+                Err(common::CommonError::IO(e)) if e.kind() == std::io::ErrorKind::BrokenPipe => false,
                 Err(e) => panic!("{e}"),
             }
         });
