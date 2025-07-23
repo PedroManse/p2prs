@@ -142,6 +142,7 @@ pub mod server {
 pub fn read_msg(stream: &mut TcpStream) -> AnyMessage {
     let mut buf = vec![0; 9];
     stream.read(&mut buf).unwrap();
+    println!("{buf:?}");
 
     // {type}:u8
     let msg_type = buf[0].try_into().unwrap();
@@ -153,6 +154,7 @@ pub fn read_msg(stream: &mut TcpStream) -> AnyMessage {
 
     let mut buf = vec![0; content_size as usize];
     stream.read(&mut buf).unwrap();
+    println!("{buf:?}");
 
     AnyMessage::from_header_and_content(msg_type, content_size, buf).unwrap()
 }
@@ -171,7 +173,6 @@ fn read_msg_nb_i(stream: &mut TcpStream) -> Result<AnyMessage, std::io::Error> {
 
     // {type}:u8
     let msg_type = buf[0];
-    println!(":> {buf:?}");
 
     // {content size}:u64
     let mut content_size = [0u8; 8];
@@ -179,7 +180,6 @@ fn read_msg_nb_i(stream: &mut TcpStream) -> Result<AnyMessage, std::io::Error> {
     let content_size = u64::from_le_bytes(content_size);
 
     let mut buf = vec![0; content_size as usize];
-    println!(":> {buf:?}");
     stream.read(&mut buf)?;
 
     let msg = AnyMessage::from_header_and_content(msg_type, content_size, buf).unwrap();

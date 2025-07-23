@@ -1,14 +1,13 @@
 use common::{AnyMessage, File, client, read_msg, server, write_msg};
-use std::net::{TcpListener, TcpStream};
+use std::net::{SocketAddrV4, TcpListener, TcpStream};
 use std::sync::{Arc, Mutex};
 
 #[derive(Debug)]
 pub struct Peer {
-    pub serve_port: u16,
+    pub server_addr: SocketAddrV4,
     pub files: Vec<File>,
     pub conn: Arc<Mutex<TcpStream>>,
 }
-
 
 fn handle(ctx: Arc<Mutex<Context>>, mut stream: TcpStream) {
     let m = read_msg(&mut stream);
@@ -17,8 +16,13 @@ fn handle(ctx: Arc<Mutex<Context>>, mut stream: TcpStream) {
         serve_port,
     })) = m
     {
+        let mut server_addr = match stream.peer_addr().unwrap() {
+            std::net::SocketAddr::V4(v4) => v4,
+            std::net::SocketAddr::V6(_) => panic!(""),
+        };
+        server_addr.set_port(serve_port);
         let new_peer = Peer {
-            serve_port,
+            server_addr,
             files: file_list,
             conn: Arc::new(Mutex::new(stream)),
         };
@@ -39,20 +43,25 @@ impl Context {
         Self::default()
     }
     fn register_peer(&mut self, new_peer: Peer) {
-        let mut sock = {
-            match new_peer.conn.lock().unwrap().peer_addr().unwrap() {
-                std::net::SocketAddr::V4(v4) => v4,
-                std::net::SocketAddr::V6(_) => panic!(""),
-            }
-        };
-        sock.set_port(new_peer.serve_port);
-        for peer in &self.peers {
+        let sock = new_peer.server_addr.clone();
+        self.peers.retain_mut(|peer| {
             let msg = server::Message::RegisterPeer(server::RegisterPeer {
                 sock,
                 file_list: new_peer.files.clone(),
             });
-            write_msg(&mut peer.conn.lock().unwrap(), msg).unwrap();
-        }
+            match write_msg(&mut peer.conn.lock().unwrap(), msg) {
+                Ok(..) => true,
+                Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => false,
+                Err(e) => panic!("{e}"),
+            }
+        });
+        self.peers.iter().for_each(|p| {
+            let msg = server::Message::RegisterPeer(server::RegisterPeer {
+                sock: p.server_addr.clone(),
+                file_list: new_peer.files.clone(),
+            });
+            write_msg(&mut new_peer.conn.lock().unwrap(), msg).unwrap();
+        });
         self.peers.push(new_peer);
     }
 }
@@ -63,7 +72,9 @@ fn main() -> Result<(), std::io::Error> {
     for stream in listener.incoming() {
         let stream = stream?;
         let th_ctx = Arc::clone(&ctx);
-        std::thread::spawn(|| handle(th_ctx, stream));
+        std::thread::Builder::new()
+            .name("Server/HandlePeer".to_string())
+            .spawn(|| handle(th_ctx, stream))?;
     }
     unreachable!()
 }
