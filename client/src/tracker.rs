@@ -1,7 +1,7 @@
-use std::collections::HashMap;
+use super::file_server::{FileServer, FileSystem};
 use common::*;
+use std::collections::HashMap;
 use std::net::{SocketAddrV4, TcpStream};
-use super::file_server::{FileSystem, FileServer};
 use std::sync::Arc;
 
 #[derive(Debug, Clone)]
@@ -101,4 +101,3 @@ impl<FS: FileSystem> TrackerServerContext<FS> {
         Ok(())
     }
 }
-

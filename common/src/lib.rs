@@ -161,9 +161,9 @@ pub fn read_msg(stream: &mut TcpStream) -> AnyMessage {
 
 pub fn read_msg_nb(stream: &mut TcpStream) -> Result<Option<AnyMessage>, std::io::Error> {
     match read_msg_nb_i(stream) {
-        Ok(m)=>Ok(Some(m)),
+        Ok(m) => Ok(Some(m)),
         Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => Ok(None),
-        Err(e) => Err(e)
+        Err(e) => Err(e),
     }
 }
 
