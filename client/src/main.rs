@@ -1,9 +1,13 @@
 use common::*;
 use std::collections::HashMap;
-use std::io::Write;
-use std::net::{SocketAddrV4, TcpListener, TcpStream};
-use std::path::{Path, PathBuf};
+use std::net::{SocketAddrV4, TcpStream};
+use std::path::PathBuf;
 use std::sync::Arc;
+
+mod file_server;
+use file_server::FileServer;
+
+use self::file_server::{FileSystem, SimpleFileSystem, FSRequest};
 
 #[derive(Debug, Clone)]
 struct Peer {
@@ -52,13 +56,13 @@ impl From<server::UpdatePeer> for Peer {
     }
 }
 
-struct TrackerServerContext {
+struct TrackerServerContext<FS: FileSystem> {
     peers: Peers,
     server: TcpStream,
-    files: Vec<File>,
+    file_server: Arc<FileServer<FS>>,
 }
 
-impl TrackerServerContext {
+impl<FS: FileSystem> TrackerServerContext<FS> {
     fn handle_message(&mut self, msg: AnyMessage) {
         match msg {
             AnyMessage::Server(server::Message::RegisterPeer(p)) => {
@@ -77,16 +81,17 @@ impl TrackerServerContext {
         }
     }
 
-    fn new(srv: TcpStream, fsrv: &FileServer) -> Result<Self, std::io::Error> {
+    fn new(srv: TcpStream, fsrv: &Arc<FileServer<FS>>) -> Result<Self, std::io::Error> {
+        let file_server = Arc::clone(&fsrv);
         srv.set_nonblocking(true)?;
         let mut slf = Self {
             peers: Peers::new(),
             server: srv,
-            files: fsrv.files.clone(),
+            file_server,
         };
         let connect_msg = client::Message::Connect(client::Connect {
             serve_port: fsrv.server.local_addr()?.port(),
-            file_list: slf.files.clone(),
+            file_list: slf.file_server.file_system.list_files(),
         });
         write_msg(&mut slf.server, connect_msg).unwrap();
         Ok(slf)
@@ -97,46 +102,6 @@ impl TrackerServerContext {
             self.handle_message(m);
         }
         Ok(())
-    }
-}
-
-struct FileServer {
-    server: TcpListener,
-    files: Vec<File>,
-}
-
-impl FileServer {
-    fn new(addr: SocketAddrV4) -> Result<Self, std::io::Error> {
-        let server = TcpListener::bind(addr)?;
-        server.set_nonblocking(true)?;
-        Ok(FileServer {
-            server,
-            files: vec![],
-        })
-    }
-    fn add_file(&mut self, file: File) {
-        self.files.push(file);
-    }
-    fn check_serve(&self) -> Result<Option<(TcpStream, PathBuf)>, std::io::Error> {
-        match self.server.accept() {
-            Ok((mut stream, _)) => {
-                let m = read_msg(&mut stream);
-                if let AnyMessage::Client(client::Message::RequestFile(f)) = m {
-                    Ok(Some((stream, f.file)))
-                } else {
-                    eprintln!("{m:?}");
-                    Ok(None)
-                }
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => Ok(None),
-            Err(e) => Err(e),
-        }
-    }
-    fn send_file(&self, stream: &mut TcpStream, _: &Path) {
-        stream.write(&[
-            54, 57, 32, 54, 57, 32, 54, 57, 32, 54, 57, 32, 54, 57, 32, 54, 57, 32, 54, 57, 32, 54,
-            57, 32, 54, 57, 32, 54, 57, 32,
-        ]).unwrap();
     }
 }
 
@@ -163,26 +128,15 @@ fn get_file_main() -> Result<(), std::io::Error> {
 
 fn serve_file_main() -> Result<(), std::io::Error> {
     let track_server = std::net::TcpStream::connect("127.0.0.1:6969").unwrap();
-    let fl_srv_addr: SocketAddrV4 = "127.0.0.1:42064".parse().unwrap();
-    let mut file_ctx = FileServer::new(fl_srv_addr)?;
-    file_ctx.add_file(File {
-        path: PathBuf::from("uwu.txt"),
-        size: 30,
-    });
-    let file_ctx = Arc::new(file_ctx);
+    let file_ctx = Arc::new(FileServer::<SimpleFileSystem>::new("127.0.0.1:4545".parse().unwrap())?);
     let mut track_ctx = TrackerServerContext::new(track_server, &file_ctx)?;
 
     std::thread::scope(|s| {
         loop {
             track_ctx.check_server_messages()?;
-            if let Some((mut stream, path)) = file_ctx.check_serve()? {
-                let fl = Arc::clone(&file_ctx);
-                std::thread::Builder::new()
-                    .name("Client/ServeFile".to_string())
-                    .spawn_scoped(s, move || {
-                        fl.send_file(&mut stream, &path);
-                    })?;
-            }
+            if let Some(file_req) = file_ctx.check_serve()? {
+                file_req.send_file_scoped_thread(s)?;
+            };
         }
     })
 }
