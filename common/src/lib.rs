@@ -2,7 +2,6 @@ pub mod serial;
 pub use serial::{FromBytes, IntoBytes};
 use std::io::{Read, Write};
 use std::net::TcpStream;
-use std::sync::{Arc, Mutex};
 
 #[derive(Debug, Clone)]
 pub struct File {
@@ -143,6 +142,7 @@ pub mod server {
 pub fn read_msg(stream: &mut TcpStream) -> AnyMessage {
     let mut buf = vec![0; 9];
     stream.read(&mut buf).unwrap();
+    println!("{buf:?}");
 
     // {type}:u8
     let msg_type = buf[0].try_into().unwrap();
@@ -154,8 +154,36 @@ pub fn read_msg(stream: &mut TcpStream) -> AnyMessage {
 
     let mut buf = vec![0; content_size as usize];
     stream.read(&mut buf).unwrap();
+    println!("{buf:?}");
 
     AnyMessage::from_header_and_content(msg_type, content_size, buf).unwrap()
+}
+
+pub fn read_msg_nb(stream: &mut TcpStream) -> Result<Option<AnyMessage>, std::io::Error> {
+    match read_msg_nb_i(stream) {
+        Ok(m) => Ok(Some(m)),
+        Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => Ok(None),
+        Err(e) => Err(e),
+    }
+}
+
+fn read_msg_nb_i(stream: &mut TcpStream) -> Result<AnyMessage, std::io::Error> {
+    let mut buf = vec![0; 9];
+    stream.read(&mut buf)?;
+
+    // {type}:u8
+    let msg_type = buf[0];
+
+    // {content size}:u64
+    let mut content_size = [0u8; 8];
+    content_size.copy_from_slice(&buf[1..8 + 1]);
+    let content_size = u64::from_le_bytes(content_size);
+
+    let mut buf = vec![0; content_size as usize];
+    stream.read(&mut buf)?;
+
+    let msg = AnyMessage::from_header_and_content(msg_type, content_size, buf).unwrap();
+    Ok(msg)
 }
 
 pub fn write_msg(
