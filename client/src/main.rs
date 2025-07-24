@@ -1,6 +1,4 @@
-use common::serialize::SerializeMessage;
 use common::*;
-use std::io::{BufWriter, Write};
 use std::net::SocketAddrV4;
 use std::path::PathBuf;
 use std::sync::Arc;

@@ -1,6 +1,6 @@
 pub mod serial;
 pub mod serialize;
-pub use serial::{FromBytes, IntoBytes};
+pub use serial::FromBytes;
 use std::io::{Read, Write};
 use std::net::TcpStream;
 
@@ -140,6 +140,7 @@ pub mod server {
     }
 }
 
+#[deprecated]
 pub fn read_msg(stream: &mut TcpStream) -> AnyMessage {
     let mut buf = vec![0; 9];
     stream.read(&mut buf).unwrap();
@@ -189,16 +190,10 @@ fn read_msg_nb_i(stream: &mut TcpStream) -> Result<AnyMessage, CommonError> {
 
 pub fn write_msg(
     stream: &mut TcpStream,
-    msg: impl Into<AnyMessage>,
-) -> Result<usize, CommonError> {
-    let msg: AnyMessage = msg.into();
-    stream.write(&msg.into_bytes())?;
-    Ok(0)
-}
-
-pub fn write_msg2<M: serialize::SerializeMessage>(stream: &mut TcpStream, msg: &M) -> Result<(), CommonError> {
-    stream.write_all(&[M::MSG_TYPE as u8])?;
-    stream.write_all(&u64::to_le_bytes(msg.size() as u64))?;
+    msg: impl serialize::Serialize,
+) -> Result<(), CommonError> {
+    stream.write(&[msg.msg_type() as u8])?;
+    stream.write(&u64::to_le_bytes(msg.size() as u64))?;
     msg.write(stream)?;
     Ok(())
 }
