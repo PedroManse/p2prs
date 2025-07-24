@@ -1,4 +1,4 @@
-use crate::{AnyMessage, client, server, MsgType};
+use crate::{AnyMessage, MsgType, client, server};
 use std::io::Write;
 
 /// Creates the three seperate components

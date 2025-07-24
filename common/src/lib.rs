@@ -1,7 +1,8 @@
+pub mod deserialize;
 pub mod serial;
 pub mod serialize;
-pub mod deserialize;
 pub use serial::FromBytes;
+pub use deserialize::{VecRead, FromBytes as DSFB, DeserializeError};
 use std::io::{Read, Write};
 use std::net::TcpStream;
 
@@ -16,7 +17,6 @@ pub enum MsgType {
     UpdatePeer = 6,
     UnregisterPeer = 7,
 }
-
 
 #[derive(Debug, Clone)]
 pub struct File {
@@ -216,4 +216,6 @@ pub fn write_msg(
 pub enum CommonError {
     #[error(transparent)]
     IO(#[from] std::io::Error),
+    #[error(transparent)]
+    Deserialize(#[from] DeserializeError),
 }
