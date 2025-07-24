@@ -1,17 +1,5 @@
-use crate::{AnyMessage, client, server};
+use crate::{AnyMessage, client, server, MsgType};
 use std::io::Write;
-
-#[derive(Debug)]
-#[repr(u8)]
-pub enum MsgType {
-    Connect = 1,
-    UpdateFiles = 2,
-    Disconnect = 3,
-    RequestFile = 4,
-    RegisterPeer = 5,
-    UpdatePeer = 6,
-    UnregisterPeer = 7,
-}
 
 /// Creates the three seperate components
 pub trait Serialize {

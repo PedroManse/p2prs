@@ -1,8 +1,22 @@
 pub mod serial;
 pub mod serialize;
+pub mod deserialize;
 pub use serial::FromBytes;
 use std::io::{Read, Write};
 use std::net::TcpStream;
+
+#[derive(Debug)]
+#[repr(u8)]
+pub enum MsgType {
+    Connect = 1,
+    UpdateFiles = 2,
+    Disconnect = 3,
+    RequestFile = 4,
+    RegisterPeer = 5,
+    UpdatePeer = 6,
+    UnregisterPeer = 7,
+}
+
 
 #[derive(Debug, Clone)]
 pub struct File {
