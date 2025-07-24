@@ -92,7 +92,7 @@ impl<FS: FileSystem> TrackerServerContext<FS> {
             serve_port: fsrv.server.local_addr()?.port(),
             file_list: slf.file_server.file_system.list_files(),
         });
-        write_msg(&mut slf.server, connect_msg).unwrap();
+        write_msg(&mut slf.server, &connect_msg).unwrap();
         Ok(slf)
     }
 

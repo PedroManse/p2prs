@@ -35,7 +35,7 @@ fn get_file_main() -> Result<(), ClientError> {
     let req_msg = client::Message::RequestFile(client::RequestFile {
         file: PathBuf::from("uwu.txt"),
     });
-    write_msg(&mut s, req_msg)?;
+    write_msg(&mut s, &req_msg)?;
     let mut buf = vec![0u8; 30];
     s.read(&mut buf)?;
     print!("{:?}", String::from_utf8(buf));

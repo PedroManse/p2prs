@@ -44,23 +44,25 @@ impl Context {
     }
     fn register_peer(&mut self, new_peer: Peer) {
         let sock = new_peer.server_addr.clone();
-        self.peers.retain_mut(|peer| {
-            let msg = server::Message::RegisterPeer(server::RegisterPeer {
-                sock,
-                file_list: new_peer.files.clone(),
-            });
-            match write_msg(&mut peer.conn.lock().unwrap(), msg) {
-                Ok(..) => true,
-                Err(common::CommonError::IO(e)) if e.kind() == std::io::ErrorKind::BrokenPipe => false,
-                Err(e) => panic!("{e}"),
-            }
+        let msg = server::Message::RegisterPeer(server::RegisterPeer {
+            sock,
+            file_list: new_peer.files.clone(),
         });
+        self.peers.retain_mut(
+            |peer| match write_msg(&mut peer.conn.lock().unwrap(), &msg) {
+                Ok(..) => true,
+                Err(common::CommonError::IO(e)) if e.kind() == std::io::ErrorKind::BrokenPipe => {
+                    false
+                }
+                Err(e) => panic!("{e}"),
+            },
+        );
         self.peers.iter().for_each(|p| {
             let msg = server::Message::RegisterPeer(server::RegisterPeer {
                 sock: p.server_addr.clone(),
                 file_list: new_peer.files.clone(),
             });
-            write_msg(&mut new_peer.conn.lock().unwrap(), msg).unwrap();
+            write_msg(&mut new_peer.conn.lock().unwrap(), &msg).unwrap();
         });
         self.peers.push(new_peer);
     }

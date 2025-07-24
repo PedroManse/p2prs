@@ -190,7 +190,7 @@ fn read_msg_nb_i(stream: &mut TcpStream) -> Result<AnyMessage, CommonError> {
 
 pub fn write_msg(
     stream: &mut TcpStream,
-    msg: impl serialize::Serialize,
+    msg: &impl serialize::Serialize,
 ) -> Result<(), CommonError> {
     stream.write(&[msg.msg_type() as u8])?;
     stream.write(&u64::to_le_bytes(msg.size() as u64))?;
