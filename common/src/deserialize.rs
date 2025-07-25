@@ -1,7 +1,7 @@
 use crate::{AnyMessage, File, MsgType, client, server};
 use std::ffi::OsString;
 use std::io::Read;
-use std::net::{Ipv4Addr, SocketAddrV4, TcpStream};
+use std::net::{Ipv4Addr, SocketAddrV4};
 use std::os::unix::ffi::OsStringExt; // for from_vec
 use std::path::PathBuf;
 
@@ -18,7 +18,7 @@ pub fn make_msg_type(m: u8) -> Result<MsgType, DeserializeError> {
     })
 }
 
-pub fn read_msg(stream: &mut TcpStream) -> Result<AnyMessage, DeserializeError> {
+pub fn read_msg(stream: &mut impl Read) -> Result<AnyMessage, DeserializeError> {
     use MsgType as M;
     use client::Message as C;
     use client::*;

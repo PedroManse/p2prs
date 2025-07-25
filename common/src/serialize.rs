@@ -35,7 +35,7 @@ impl SerializeMessage for client::Connect {
             .map(|a| a.path.as_os_str().as_encoded_bytes().len() + std::mem::size_of::<u64>() * 2)
             .sum::<usize>()
             + std::mem::size_of::<u16>() // server port
-            + std::mem::size_of::<u32>() // file count
+            //+ std::mem::size_of::<u32>() // file count
     }
     fn write(&self, stream: &mut impl Write) -> Result<(), std::io::Error> {
         // {serve_port}:u16 {file_count}:u32 [ {file_size}:64 {path_len}:64 {path}:path_len ]*
