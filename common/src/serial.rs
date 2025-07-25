@@ -138,7 +138,7 @@ impl FromRaw for AnyMessage {
 
 impl FromBytes for client::Connect {
     type Error = ();
-    // {serve_port}:u16 [ {file_size}:64 {path_len}:64 {path}:path_len ]*
+    // {serve_port}:u16 {file_count}:u32 [ {file_size}:64 {path_len}:64 {path}:path_len ]*
     fn from_bytes(mut bytes: &[u8]) -> Result<Self, Self::Error> {
         use std::os::unix::ffi::OsStrExt; // for from_bytes
         let mut file_list = Vec::new();

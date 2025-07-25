@@ -1,8 +1,8 @@
 pub mod deserialize;
 pub mod serial;
 pub mod serialize;
+pub use deserialize::{DeserializeError, FromBytes as DSFB, VecRead};
 pub use serial::FromBytes;
-pub use deserialize::{VecRead, FromBytes as DSFB, DeserializeError};
 use std::io::{Read, Write};
 use std::net::TcpStream;
 

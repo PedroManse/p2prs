@@ -37,8 +37,9 @@ impl SerializeMessage for client::Connect {
             + std::mem::size_of::<u16>()
     }
     fn write(&self, stream: &mut impl Write) -> Result<(), std::io::Error> {
-        // {serve_port}:u16 [ {file_size}:64 {path_len}:64 {path}:path_len ]*
+        // {serve_port}:u16 {file_count}:u32 [ {file_size}:64 {path_len}:64 {path}:path_len ]*
         stream.write_all(&self.serve_port.to_le_bytes())?;
+        stream.write_all(&(self.file_list.len() as u32).to_le_bytes())?;
         for file in &self.file_list {
             stream.write_all(&file.size.to_le_bytes())?;
             stream.write_all(&file.path.as_os_str().as_encoded_bytes().len().to_le_bytes())?;
