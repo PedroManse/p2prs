@@ -7,9 +7,9 @@ use std::net::{SocketAddrV4, TcpStream};
 use std::sync::Arc;
 
 #[derive(Debug, Clone)]
-struct Peer {
+pub struct Peer {
     sock: SocketAddrV4,
-    files: Vec<File>,
+    pub files: Vec<File>,
 }
 
 #[derive(Default)]
@@ -22,15 +22,15 @@ impl Peers {
         Self::default()
     }
     fn add_peer(&mut self, peer: Peer) -> Option<Peer> {
-        self.full.insert(peer.sock.clone(), peer)
+        self.full.insert(peer.sock, peer)
     }
     fn update_peer(&mut self, new_peer: Peer) {
-        self.full.insert(new_peer.sock.clone(), new_peer);
+        self.full.insert(new_peer.sock, new_peer);
     }
     fn remove_peer(&mut self, sock: SocketAddrV4) -> Option<Peer> {
         self.full.remove(&sock)
     }
-    fn get_peer(&mut self, sock: SocketAddrV4) -> Option<&Peer> {
+    pub fn get_peer(&mut self, sock: SocketAddrV4) -> Option<&Peer> {
         self.full.get(&sock)
     }
 }
@@ -82,7 +82,7 @@ impl<FS: FileSystem> TrackerServerContext<FS> {
         let track_server = std::net::TcpStream::connect(srv).unwrap();
         track_server.set_nonblocking(true)?;
 
-        let file_server = Arc::clone(&fsrv);
+        let file_server = Arc::clone(fsrv);
         let mut slf = Self {
             peers: Peers::new(),
             server: track_server,

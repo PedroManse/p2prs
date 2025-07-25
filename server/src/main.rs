@@ -43,7 +43,7 @@ impl Context {
         Self::default()
     }
     fn register_peer(&mut self, new_peer: Peer) {
-        let sock = new_peer.server_addr.clone();
+        let sock = new_peer.server_addr;
         let msg = server::Message::RegisterPeer(server::RegisterPeer {
             sock,
             file_list: new_peer.files.clone(),
@@ -59,7 +59,7 @@ impl Context {
         );
         self.peers.iter().for_each(|p| {
             let msg = server::Message::RegisterPeer(server::RegisterPeer {
-                sock: p.server_addr.clone(),
+                sock: p.server_addr,
                 file_list: new_peer.files.clone(),
             });
             write_msg(&mut new_peer.conn.lock().unwrap(), &msg).unwrap();

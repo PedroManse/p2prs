@@ -156,7 +156,7 @@ pub fn read_msg_nb(stream: &mut TcpStream) -> Result<Option<AnyMessage>, CommonE
     match read_msg(stream) {
         Ok(m) => Ok(Some(m)),
         Err(DeserializeError::IO(e)) if e.kind() == std::io::ErrorKind::WouldBlock => Ok(None),
-        Err(e) => Err(e).map_err(CommonError::from),
+        Err(e) => Err(CommonError::from(e)),
     }
 }
 
@@ -164,8 +164,8 @@ pub fn write_msg(
     stream: &mut TcpStream,
     msg: &impl serialize::Serialize,
 ) -> Result<(), CommonError> {
-    stream.write(&[msg.msg_type() as u8])?;
-    stream.write(&u64::to_le_bytes(msg.size() as u64))?;
+    stream.write_all(&[msg.msg_type() as u8])?;
+    stream.write_all(&u64::to_le_bytes(msg.size() as u64))?;
     msg.write(stream)?;
     Ok(())
 }

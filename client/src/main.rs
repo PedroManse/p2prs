@@ -56,7 +56,7 @@ fn serve_file_main() -> Result<(), ClientError> {
             track_ctx.check_server_messages()?;
             if let Some(file_req) = file_ctx.check_serve()? {
                 file_req.send_file_scoped_thread(s)?;
-            };
+            }
         }
     })
 }
