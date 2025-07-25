@@ -1,9 +1,7 @@
 pub mod deserialize;
-pub mod serial;
 pub mod serialize;
-pub use deserialize::{DeserializeError, FromBytes as DSFB, VecRead};
-pub use serial::FromBytes;
-use std::io::{Read, Write};
+pub use deserialize::{DeserializeError, read_msg};
+use std::io::Write;
 use std::net::TcpStream;
 
 #[derive(Debug)]
@@ -154,52 +152,12 @@ pub mod server {
     }
 }
 
-#[deprecated]
-pub fn read_msg(stream: &mut TcpStream) -> AnyMessage {
-    let mut buf = vec![0; 9];
-    stream.read(&mut buf).unwrap();
-    println!("{buf:?}");
-
-    // {type}:u8
-    let msg_type = buf[0].try_into().unwrap();
-
-    // {content size}:u64
-    let mut content_size = [0u8; 8];
-    content_size.copy_from_slice(&buf[1..8 + 1]);
-    let content_size = u64::from_le_bytes(content_size);
-
-    let mut buf = vec![0; content_size as usize];
-    stream.read(&mut buf).unwrap();
-    println!("{buf:?}");
-
-    AnyMessage::from_header_and_content(msg_type, content_size, buf).unwrap()
-}
-
 pub fn read_msg_nb(stream: &mut TcpStream) -> Result<Option<AnyMessage>, CommonError> {
-    match read_msg_nb_i(stream) {
+    match read_msg(stream) {
         Ok(m) => Ok(Some(m)),
-        Err(CommonError::IO(e)) if e.kind() == std::io::ErrorKind::WouldBlock => Ok(None),
-        Err(e) => Err(e),
+        Err(DeserializeError::IO(e)) if e.kind() == std::io::ErrorKind::WouldBlock => Ok(None),
+        Err(e) => Err(e).map_err(CommonError::from),
     }
-}
-
-fn read_msg_nb_i(stream: &mut TcpStream) -> Result<AnyMessage, CommonError> {
-    let mut buf = vec![0; 9];
-    stream.read(&mut buf)?;
-
-    // {type}:u8
-    let msg_type = buf[0];
-
-    // {content size}:u64
-    let mut content_size = [0u8; 8];
-    content_size.copy_from_slice(&buf[1..8 + 1]);
-    let content_size = u64::from_le_bytes(content_size);
-
-    let mut buf = vec![0; content_size as usize];
-    stream.read(&mut buf)?;
-
-    let msg = AnyMessage::from_header_and_content(msg_type, content_size, buf).unwrap();
-    Ok(msg)
 }
 
 pub fn write_msg(

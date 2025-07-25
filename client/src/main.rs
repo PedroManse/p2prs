@@ -43,8 +43,8 @@ fn get_file_main() -> Result<(), ClientError> {
 }
 
 fn serve_file_main() -> Result<(), ClientError> {
-    let tracker_addr = "127.0.0.1:42069".parse()?;
-    let file_server_addr = "127.0.0.1:6969".parse()?;
+    let file_server_addr = "127.0.0.1:42069".parse()?;
+    let tracker_addr = "127.0.0.1:6969".parse()?;
 
     let file_ctx = Arc::new(FileServer::<file_server::SimpleFileSystem>::new(
         file_server_addr,

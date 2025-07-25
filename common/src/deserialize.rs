@@ -1,7 +1,7 @@
 use crate::{AnyMessage, File, MsgType, client, server};
 use std::ffi::OsString;
 use std::io::Read;
-use std::net::TcpStream;
+use std::net::{Ipv4Addr, SocketAddrV4, TcpStream};
 use std::os::unix::ffi::OsStringExt; // for from_vec
 use std::path::PathBuf;
 
@@ -26,7 +26,7 @@ pub fn read_msg(stream: &mut TcpStream) -> Result<AnyMessage, DeserializeError> 
     use server::*;
 
     let msg_type = u8::from_stream(stream).and_then(make_msg_type)?;
-    let mut content: VecRead = Vec::from_stream(stream)?.into();
+    let mut content = VecRead::from(Vec::from_stream(stream)?);
 
     Ok(match msg_type {
         M::Connect => C::from(Connect::from_stream(&mut content)?).into(),
@@ -137,40 +137,61 @@ impl FromBytes for client::Connect {
         let serve_port = u16::from_stream(stream)?;
         let file_count = u32::from_stream(stream)?;
         let mut file_list = Vec::with_capacity(file_count as usize);
-        for _ in 0..file_count {
+        for _ in 0..=file_count {
             let size = u64::from_stream(stream)?;
             let path = PathBuf::from_stream(stream)?;
             file_list.push(File { size, path })
         }
-        Ok(client::Connect{
+        Ok(Self {
             serve_port,
             file_list,
         })
     }
 }
+
 impl FromBytes for client::UpdateFiles {
     fn from_stream(stream: &mut impl Read) -> Result<Self, DeserializeError> {
-        todo!()
+        // {file_count}:u32 [ {file_size}:u64 {path_len}:u64 {path}:path_len ]*
+        let file_count = u32::from_stream(stream)?;
+        let mut file_list = Vec::with_capacity(file_count as usize);
+        for _ in 0..file_count {
+            let size = u64::from_stream(stream)?;
+            let path = PathBuf::from_stream(stream)?;
+            file_list.push(File { size, path })
+        }
+        Ok(Self { file_list })
     }
 }
-impl FromBytes for client::RequestFile {
-    fn from_stream(stream: &mut impl Read) -> Result<Self, DeserializeError> {
-        todo!()
-    }
-}
-impl FromBytes for server::UpdatePeer {
-    fn from_stream(stream: &mut impl Read) -> Result<Self, DeserializeError> {
-        todo!()
-    }
-}
-impl FromBytes for server::UnregisterPeer {
-    fn from_stream(stream: &mut impl Read) -> Result<Self, DeserializeError> {
-        todo!()
-    }
-}
+
+impl_read!(PathBuf => |file|client::RequestFile{file} => client::RequestFile);
+
 impl FromBytes for server::RegisterPeer {
     fn from_stream(stream: &mut impl Read) -> Result<Self, DeserializeError> {
-        todo!()
+        let ip = u32::from_stream(stream)?;
+        let port = u16::from_stream(stream)?;
+        let file_count = u32::from_stream(stream)?;
+        let mut file_list = Vec::with_capacity(file_count as usize);
+        for _ in 0..file_count {
+            let size = u64::from_stream(stream)?;
+            let path = PathBuf::from_stream(stream)?;
+            file_list.push(File { size, path })
+        }
+        Ok(Self {
+            sock: SocketAddrV4::new(Ipv4Addr::from_bits(ip), port),
+            file_list,
+        })
+    }
+}
+
+impl_read!(server::RegisterPeer => |server::RegisterPeer{sock, file_list}|server::UpdatePeer{ sock, file_list  } => server::UpdatePeer);
+
+impl FromBytes for server::UnregisterPeer {
+    fn from_stream(stream: &mut impl Read) -> Result<Self, DeserializeError> {
+        let ip = u32::from_stream(stream)?;
+        let port = u16::from_stream(stream)?;
+        Ok(Self {
+            sock: SocketAddrV4::new(Ipv4Addr::from_bits(ip), port),
+        })
     }
 }
 

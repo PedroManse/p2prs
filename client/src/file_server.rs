@@ -13,10 +13,10 @@ impl<FS: FileSystem> FileServer<FS> {
             file_system: FS::new(),
         })
     }
-    pub fn check_serve(&self) -> Result<Option<FS::FileRecord<'_>>, std::io::Error> {
+    pub fn check_serve(&self) -> Result<Option<FS::FileRecord<'_>>, CommonError> {
         match self.server.accept() {
             Ok((mut stream, _)) => {
-                let m = read_msg(&mut stream);
+                let m = read_msg(&mut stream)?;
                 if let AnyMessage::Client(client::Message::RequestFile(f)) = m {
                     Ok(Some(self.file_system.make_request(stream, f.file)))
                 } else {
@@ -25,7 +25,7 @@ impl<FS: FileSystem> FileServer<FS> {
                 }
             }
             Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => Ok(None),
-            Err(e) => Err(e),
+            Err(e) => Err(e)?,
         }
     }
 }

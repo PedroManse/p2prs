@@ -35,6 +35,7 @@ impl SerializeMessage for client::Connect {
             .map(|a| a.path.as_os_str().as_encoded_bytes().len() + std::mem::size_of::<u64>() * 2)
             .sum::<usize>()
             + std::mem::size_of::<u16>()
+            + std::mem::size_of::<u32>()
     }
     fn write(&self, stream: &mut impl Write) -> Result<(), std::io::Error> {
         // {serve_port}:u16 {file_count}:u32 [ {file_size}:64 {path_len}:64 {path}:path_len ]*
@@ -55,9 +56,12 @@ impl SerializeMessage for client::UpdateFiles {
         self.file_list
             .iter()
             .map(|a| a.path.as_os_str().as_encoded_bytes().len() + std::mem::size_of::<u64>() * 2)
-            .sum()
+            .sum::<usize>()
+            + std::mem::size_of::<u32>()
     }
     fn write(&self, stream: &mut impl Write) -> Result<(), std::io::Error> {
+        // {file_count}:u32 [ {file_size}:64 {path_len}:64 {path}:path_len ]*
+        stream.write_all(&(self.file_list.len() as u32).to_le_bytes())?;
         for file in &self.file_list {
             stream.write_all(&file.size.to_le_bytes())?;
             stream.write_all(&file.path.as_os_str().as_encoded_bytes().len().to_le_bytes())?;
@@ -89,9 +93,10 @@ impl SerializeMessage for server::RegisterPeer {
             + std::mem::size_of::<u32>()
     }
     fn write(&self, stream: &mut impl Write) -> Result<(), std::io::Error> {
-        // {serve_ip}:u32 {serve_port}:u16 [ {file_size}:64 {path_len}:64 {path}:path_len ]*
+        // {serve_ip}:u32 {serve_port}:u16 {file_count}:u32 [ {file_size}:64 {path_len}:64 {path}:path_len ]*
         stream.write_all(&self.sock.ip().to_bits().to_le_bytes())?;
         stream.write_all(&self.sock.port().to_le_bytes())?;
+        stream.write_all(&(self.file_list.len() as u32).to_le_bytes())?;
         for file in &self.file_list {
             stream.write_all(&file.size.to_le_bytes())?;
             stream.write_all(&file.path.as_os_str().as_encoded_bytes().len().to_le_bytes())?;
@@ -112,9 +117,10 @@ impl SerializeMessage for server::UpdatePeer {
             + std::mem::size_of::<u32>()
     }
     fn write(&self, stream: &mut impl Write) -> Result<(), std::io::Error> {
-        // {serve_ip}:u32 {serve_port}:u16 [ {file_size}:64 {path_len}:64 {path}:path_len ]*
+        // {serve_ip}:u32 {serve_port}:u16 {file_count}:u32 [ {file_size}:64 {path_len}:64 {path}:path_len ]*
         stream.write_all(&self.sock.ip().to_bits().to_le_bytes())?;
         stream.write_all(&self.sock.port().to_le_bytes())?;
+        stream.write_all(&(self.file_list.len() as u32).to_le_bytes())?;
         for file in &self.file_list {
             stream.write_all(&file.size.to_le_bytes())?;
             stream.write_all(&file.path.as_os_str().as_encoded_bytes().len().to_le_bytes())?;
