@@ -65,6 +65,7 @@ impl Read for VecRead {
         let wish_take = buf.len();
         let new_pointer = self.pointer + wish_take;
         if new_pointer > self.buf.len() {
+            eprintln!("{self:?}");
             Err(std::io::Error::new(
                 std::io::ErrorKind::UnexpectedEof,
                 "VecRead EOF Error",
@@ -137,14 +138,14 @@ impl FromBytes for client::Connect {
         let serve_port = u16::from_stream(stream)?;
         let file_count = u32::from_stream(stream)?;
         let mut file_list = Vec::with_capacity(file_count as usize);
-        for _ in 0..=file_count {
+        for _ in 0..file_count {
             let size = u64::from_stream(stream)?;
             let path = PathBuf::from_stream(stream)?;
-            file_list.push(File { size, path })
+            file_list.push(File { path, size });
         }
         Ok(Self {
-            serve_port,
             file_list,
+            serve_port,
         })
     }
 }
@@ -157,7 +158,7 @@ impl FromBytes for client::UpdateFiles {
         for _ in 0..file_count {
             let size = u64::from_stream(stream)?;
             let path = PathBuf::from_stream(stream)?;
-            file_list.push(File { size, path })
+            file_list.push(File { path, size });
         }
         Ok(Self { file_list })
     }
@@ -167,6 +168,7 @@ impl_read!(PathBuf => |file|client::RequestFile{file} => client::RequestFile);
 
 impl FromBytes for server::RegisterPeer {
     fn from_stream(stream: &mut impl Read) -> Result<Self, DeserializeError> {
+        // {serve_ip}:u32 {serve_port}:u16 {file_count}:u32 [ {file_size}:64 {path_len}:64 {path}:path_len ]*
         let ip = u32::from_stream(stream)?;
         let port = u16::from_stream(stream)?;
         let file_count = u32::from_stream(stream)?;
@@ -174,7 +176,7 @@ impl FromBytes for server::RegisterPeer {
         for _ in 0..file_count {
             let size = u64::from_stream(stream)?;
             let path = PathBuf::from_stream(stream)?;
-            file_list.push(File { size, path })
+            file_list.push(File { path, size });
         }
         Ok(Self {
             sock: SocketAddrV4::new(Ipv4Addr::from_bits(ip), port),
