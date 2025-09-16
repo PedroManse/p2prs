@@ -9,7 +9,7 @@ use std::sync::Arc;
 #[derive(Debug, Clone)]
 pub struct Peer {
     sock: SocketAddrV4,
-    pub files: Vec<File>,
+    pub _files: Vec<File>,
 }
 
 #[derive(Default)]
@@ -30,7 +30,7 @@ impl Peers {
     fn remove_peer(&mut self, sock: SocketAddrV4) -> Option<Peer> {
         self.full.remove(&sock)
     }
-    pub fn get_peer(&mut self, sock: SocketAddrV4) -> Option<&Peer> {
+    fn _get_peer(&mut self, sock: SocketAddrV4) -> Option<&Peer> {
         self.full.get(&sock)
     }
 }
@@ -39,7 +39,7 @@ impl From<server::RegisterPeer> for Peer {
     fn from(server::RegisterPeer { sock, file_list }: server::RegisterPeer) -> Self {
         Peer {
             sock,
-            files: file_list,
+            _files: file_list,
         }
     }
 }
@@ -48,7 +48,7 @@ impl From<server::UpdatePeer> for Peer {
     fn from(server::UpdatePeer { sock, file_list }: server::UpdatePeer) -> Self {
         Peer {
             sock,
-            files: file_list,
+            _files: file_list,
         }
     }
 }
