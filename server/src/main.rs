@@ -9,7 +9,7 @@ pub struct Peer {
     pub conn: Arc<Mutex<TcpStream>>,
 }
 
-fn handle(ctx: Arc<Mutex<Context>>, mut stream: TcpStream) -> Result<(), CommonError> {
+fn handle(ctx: &Arc<Mutex<Context>>, mut stream: TcpStream) -> Result<(), CommonError> {
     let m = read_msg(&mut stream)?;
     if let AnyMessage::Client(client::Message::Connect(client::Connect {
         file_list,
@@ -72,12 +72,12 @@ fn main() -> Result<(), std::io::Error> {
     let ctx = Arc::new(Mutex::new(Context::new()));
     let listener = TcpListener::bind("127.0.0.1:6969")?;
     for stream in listener.incoming() {
-        println!("{stream:?}");
-        let stream = stream?;
-        let th_ctx = Arc::clone(&ctx);
-        std::thread::Builder::new()
-            .name("Server/HandlePeer".to_string())
-            .spawn(|| handle(th_ctx, stream))?;
+        std::thread::scope(|s| {
+            println!("{stream:?}");
+            let stream = stream?;
+            s.spawn(|| handle(&ctx, stream));
+            Ok::<(), std::io::Error>(())
+        })?;
     }
     unreachable!()
 }

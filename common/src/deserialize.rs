@@ -140,11 +140,11 @@ impl FromBytes for client::Connect {
         for _ in 0..=file_count {
             let size = u64::from_stream(stream)?;
             let path = PathBuf::from_stream(stream)?;
-            file_list.push(File { size, path })
+            file_list.push(File { path, size });
         }
         Ok(Self {
-            serve_port,
             file_list,
+            serve_port,
         })
     }
 }
@@ -157,7 +157,7 @@ impl FromBytes for client::UpdateFiles {
         for _ in 0..file_count {
             let size = u64::from_stream(stream)?;
             let path = PathBuf::from_stream(stream)?;
-            file_list.push(File { size, path })
+            file_list.push(File { path, size });
         }
         Ok(Self { file_list })
     }
@@ -174,7 +174,7 @@ impl FromBytes for server::RegisterPeer {
         for _ in 0..file_count {
             let size = u64::from_stream(stream)?;
             let path = PathBuf::from_stream(stream)?;
-            file_list.push(File { size, path })
+            file_list.push(File { path, size });
         }
         Ok(Self {
             sock: SocketAddrV4::new(Ipv4Addr::from_bits(ip), port),

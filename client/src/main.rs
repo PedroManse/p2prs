@@ -37,7 +37,7 @@ fn get_file_main() -> Result<(), ClientError> {
     });
     write_msg(&mut s, &req_msg)?;
     let mut buf = vec![0u8; 30];
-    s.read(&mut buf)?;
+    s.read_to_end(&mut buf)?;
     print!("{:?}", String::from_utf8(buf));
     Ok(())
 }

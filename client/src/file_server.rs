@@ -81,7 +81,7 @@ pub struct SimpleFileRequest {
 impl FSRequest<'_, SimpleFileSystem> for SimpleFileRequest {
     fn send_file(mut self) {
         let str = std::fs::read_to_string(self.path).unwrap();
-        self.stream.write(str.as_bytes()).unwrap();
+        self.stream.write_all(str.as_bytes()).unwrap();
     }
 }
 
