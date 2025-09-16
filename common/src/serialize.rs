@@ -34,8 +34,8 @@ impl SerializeMessage for client::Connect {
             .iter()
             .map(|a| a.path.as_os_str().as_encoded_bytes().len() + std::mem::size_of::<u64>() * 2)
             .sum::<usize>()
-            + std::mem::size_of::<u16>()
-            + std::mem::size_of::<u32>()
+            + std::mem::size_of::<u16>() // server port
+            + std::mem::size_of::<u32>() // file count
     }
     fn write(&self, stream: &mut impl Write) -> Result<(), std::io::Error> {
         // {serve_port}:u16 {file_count}:u32 [ {file_size}:64 {path_len}:64 {path}:path_len ]*
@@ -56,8 +56,8 @@ impl SerializeMessage for client::UpdateFiles {
         self.file_list
             .iter()
             .map(|a| a.path.as_os_str().as_encoded_bytes().len() + std::mem::size_of::<u64>() * 2)
-            .sum::<usize>()
-            + std::mem::size_of::<u32>()
+            .sum::<usize>() // file
+            + std::mem::size_of::<u32>() //file count
     }
     fn write(&self, stream: &mut impl Write) -> Result<(), std::io::Error> {
         // {file_count}:u32 [ {file_size}:64 {path_len}:64 {path}:path_len ]*
@@ -74,7 +74,7 @@ impl SerializeMessage for client::UpdateFiles {
 impl SerializeMessage for client::RequestFile {
     const MSG_TYPE: MsgType = MsgType::RequestFile;
     fn size(&self) -> usize {
-        self.file.as_os_str().as_encoded_bytes().len()
+        std::mem::size_of::<u64>() + self.file.as_os_str().as_encoded_bytes().len()
     }
     fn write(&self, stream: &mut impl Write) -> Result<(), std::io::Error> {
         stream.write_all(&self.file.as_os_str().as_encoded_bytes().len().to_le_bytes())?;
@@ -88,9 +88,10 @@ impl SerializeMessage for server::RegisterPeer {
         self.file_list
             .iter()
             .map(|a| a.path.as_os_str().as_encoded_bytes().len() + std::mem::size_of::<u64>() * 2)
-            .sum::<usize>()
-            + std::mem::size_of::<u16>()
-            + std::mem::size_of::<u32>()
+            .sum::<usize>() // files
+            + std::mem::size_of::<u16>() // server port
+            + std::mem::size_of::<u32>() // server ip
+            + std::mem::size_of::<u32>() // file count
     }
     fn write(&self, stream: &mut impl Write) -> Result<(), std::io::Error> {
         // {serve_ip}:u32 {serve_port}:u16 {file_count}:u32 [ {file_size}:64 {path_len}:64 {path}:path_len ]*
@@ -113,8 +114,9 @@ impl SerializeMessage for server::UpdatePeer {
             .iter()
             .map(|a| a.path.as_os_str().as_encoded_bytes().len() + std::mem::size_of::<u64>() * 2)
             .sum::<usize>()
-            + std::mem::size_of::<u16>()
-            + std::mem::size_of::<u32>()
+            + std::mem::size_of::<u16>() // server port
+            + std::mem::size_of::<u32>() // server ip
+            + std::mem::size_of::<u32>() // file count
     }
     fn write(&self, stream: &mut impl Write) -> Result<(), std::io::Error> {
         // {serve_ip}:u32 {serve_port}:u16 {file_count}:u32 [ {file_size}:64 {path_len}:64 {path}:path_len ]*

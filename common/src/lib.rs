@@ -4,6 +4,9 @@ pub use deserialize::{DeserializeError, read_msg};
 use std::io::Write;
 use std::net::TcpStream;
 
+#[cfg(test)]
+mod test;
+
 #[derive(Debug)]
 #[repr(u8)]
 pub enum MsgType {
@@ -16,13 +19,13 @@ pub enum MsgType {
     UnregisterPeer = 7,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct File {
     pub path: std::path::PathBuf,
     pub size: u64,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum AnyMessage {
     Client(client::Message),
     Server(server::Message),
@@ -46,7 +49,7 @@ pub mod client {
     use std::path::PathBuf;
 
     // 1. Connect
-    #[derive(Debug)]
+    #[derive(Debug, PartialEq)]
     pub struct Connect {
         pub file_list: Vec<File>,
         pub serve_port: u16,
@@ -59,7 +62,7 @@ pub mod client {
     }
 
     // 2. UpdateFiles
-    #[derive(Debug)]
+    #[derive(Debug, PartialEq)]
     pub struct UpdateFiles {
         pub file_list: Vec<File>,
     }
@@ -71,7 +74,7 @@ pub mod client {
     }
 
     // 3. Disconnect
-    #[derive(Debug)]
+    #[derive(Debug, PartialEq)]
     pub struct Disconnect;
 
     impl From<Disconnect> for Message {
@@ -81,7 +84,7 @@ pub mod client {
     }
 
     // 4. RequestFile
-    #[derive(Debug)]
+    #[derive(Debug, PartialEq)]
     pub struct RequestFile {
         pub file: PathBuf,
     }
@@ -92,7 +95,7 @@ pub mod client {
         }
     }
 
-    #[derive(Debug)]
+    #[derive(Debug, PartialEq)]
     pub enum Message {
         Connect(Connect),
         UpdateFiles(UpdateFiles),
@@ -107,7 +110,7 @@ pub mod server {
     use std::net::SocketAddrV4;
 
     // 1. RegisterPeer
-    #[derive(Debug)]
+    #[derive(Debug, PartialEq)]
     pub struct RegisterPeer {
         pub sock: SocketAddrV4,
         pub file_list: Vec<File>,
@@ -120,7 +123,7 @@ pub mod server {
     }
 
     // 2. UpdatePeer
-    #[derive(Debug)]
+    #[derive(Debug, PartialEq)]
     pub struct UpdatePeer {
         pub sock: SocketAddrV4,
         pub file_list: Vec<File>,
@@ -133,7 +136,7 @@ pub mod server {
     }
 
     // 3. UnregisterPeer
-    #[derive(Debug)]
+    #[derive(Debug, PartialEq)]
     pub struct UnregisterPeer {
         pub sock: SocketAddrV4,
     }
@@ -144,7 +147,7 @@ pub mod server {
         }
     }
 
-    #[derive(Debug)]
+    #[derive(Debug, PartialEq)]
     pub enum Message {
         RegisterPeer(RegisterPeer),
         UpdatePeer(UpdatePeer),
@@ -162,6 +165,13 @@ pub fn read_msg_nb(stream: &mut TcpStream) -> Result<Option<AnyMessage>, CommonE
 
 pub fn write_msg(
     stream: &mut TcpStream,
+    msg: &impl serialize::Serialize,
+) -> Result<(), CommonError> {
+    write_msg_d(stream, msg)
+}
+
+pub fn write_msg_d(
+    stream: &mut impl Write,
     msg: &impl serialize::Serialize,
 ) -> Result<(), CommonError> {
     stream.write_all(&[msg.msg_type() as u8])?;

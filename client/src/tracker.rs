@@ -80,7 +80,7 @@ impl<FS: FileSystem> TrackerServerContext<FS> {
 
     pub fn new(srv: SocketAddrV4, fsrv: &Arc<FileServer<FS>>) -> Result<Self, ClientError> {
         let track_server = std::net::TcpStream::connect(srv).unwrap();
-        track_server.set_nonblocking(true)?;
+        //track_server.set_nonblocking(true)?;
 
         let file_server = Arc::clone(fsrv);
         let mut slf = Self {
@@ -92,12 +92,12 @@ impl<FS: FileSystem> TrackerServerContext<FS> {
             serve_port: fsrv.server.local_addr()?.port(),
             file_list: slf.file_server.file_system.list_files(),
         });
-        write_msg(&mut slf.server, &connect_msg).unwrap();
+        write_msg(&mut slf.server, &connect_msg)?;
         Ok(slf)
     }
 
     pub fn check_server_messages(&mut self) -> Result<(), ClientError> {
-        if let Some(m) = read_msg_nb(&mut self.server)? {
+        if let Some(m) = read_msg_nb(&mut self.server).map_err(CommonError::from)? {
             self.handle_message(m);
         }
         Ok(())

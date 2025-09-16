@@ -1,7 +1,7 @@
 use common::*;
 use std::net::SocketAddrV4;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 mod file_server;
 use file_server::{FSRequest, FileServer};
@@ -29,7 +29,7 @@ pub enum ClientError {
 
 fn get_file_main() -> Result<(), ClientError> {
     use std::io::Read;
-    let file_server_addr: SocketAddrV4 = "127.0.0.1:6969".parse().unwrap();
+    let file_server_addr: SocketAddrV4 = "127.0.0.1:43625".parse().unwrap();
 
     let mut s = std::net::TcpStream::connect(file_server_addr).unwrap();
     let req_msg = client::Message::RequestFile(client::RequestFile {
@@ -43,20 +43,54 @@ fn get_file_main() -> Result<(), ClientError> {
 }
 
 fn serve_file_main() -> Result<(), ClientError> {
-    let file_server_addr = "127.0.0.1:42069".parse()?;
+    let file_server_addr = "127.0.0.1:0".parse()?;
     let tracker_addr = "127.0.0.1:6969".parse()?;
 
     let file_ctx = Arc::new(FileServer::<file_server::SimpleFileSystem>::new(
         file_server_addr,
     )?);
-    let mut track_ctx = TrackerServerContext::new(tracker_addr, &file_ctx)?;
+    let (tx, rx) = std::sync::mpsc::channel::<String>();
+    let track_ctx = Arc::new(Mutex::new(TrackerServerContext::new(
+        tracker_addr,
+        &file_ctx,
+    )?));
+    let track_ctx_th = Arc::clone(&track_ctx);
 
-    std::thread::scope(|s| {
+    let tracker_erros = tx.clone();
+    std::thread::spawn(move || {
         loop {
-            track_ctx.check_server_messages()?;
-            if let Some(file_req) = file_ctx.check_serve()? {
-                file_req.send_file_scoped_thread(s)?;
+            let mut track = match track_ctx_th.lock() {
+                Ok(e) => e,
+                Err(e) => {
+                    tracker_erros.send(e.to_string()).unwrap();
+                    return;
+                }
+            };
+            if let Err(e) = track.check_server_messages() {
+                tracker_erros.send(e.to_string()).unwrap();
             }
         }
-    })
+    });
+
+    let file_server_errors = tx.clone();
+    std::thread::spawn(move || {
+        loop {
+            let fl_req = match file_ctx.check_serve() {
+                Some(Ok(e)) => Some(e),
+                Some(Err(e)) => {
+                    file_server_errors.send(e.to_string()).unwrap();
+                    None
+                }
+                None => None,
+            };
+            if let Some(file_req) = fl_req {
+                std::thread::spawn(|| {
+                    file_req.send_file();
+                });
+            }
+        }
+    });
+    let error = rx.recv().unwrap();
+    eprintln!("ERROR: {error}");
+    Ok(())
 }
